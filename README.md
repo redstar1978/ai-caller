@@ -1,7 +1,7 @@
 # AI-Caller – KI-Anrufbeantworter / AI Answering Machine
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python" alt="Python">
+  <img src="https://img.shields.io/badge/Python-3.10%2B%20(inkl.%203.13)-blue?logo=python" alt="Python">
   <img src="https://img.shields.io/badge/Flask-2.3%2B-green?logo=flask" alt="Flask">
   <img src="https://img.shields.io/badge/VoIP-SIP%20%2F%20FritzBox-orange" alt="VoIP">
   <img src="https://img.shields.io/badge/KI-Ollama%20%7C%20Groq%20%7C%20OpenAI-purple" alt="AI">
@@ -52,7 +52,7 @@ bash install.sh
 ### 📋 Voraussetzungen
 
 - Debian 12 / Ubuntu 22.04+ (oder Proxmox LXC-Container darauf basierend)
-- Python 3.10 oder neuer
+- Python 3.10 oder neuer (**inkl. Python 3.13**, `audioop-lts` wird automatisch installiert)
 - 2 GB RAM (empfohlen: 4 GB für lokale KI-Modelle)
 - 5 GB freier Speicher (10 GB mit lokalen TTS/STT-Modellen)
 - SIP-fähiger Router (z. B. FritzBox) oder externer SIP-Anbieter
@@ -188,7 +188,7 @@ bash install.sh
 ### 📋 Requirements
 
 - Debian 12 / Ubuntu 22.04+ (or Proxmox LXC container based on these)
-- Python 3.10 or newer
+- Python 3.10 or newer (**including Python 3.13**, `audioop-lts` is installed automatically)
 - 2 GB RAM (recommended: 4 GB for local AI models)
 - 5 GB free storage (10 GB with local TTS/STT models)
 - SIP-capable router (e.g. FritzBox) or external SIP provider

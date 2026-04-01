@@ -12,7 +12,15 @@ Cloud LLM  : OpenAI Chat API (or any OpenAI-compatible endpoint)
 import io
 import os
 import wave
-import audioop
+try:
+    import audioop                    # Python ≤ 3.12 stdlib
+except ModuleNotFoundError:
+    try:
+        import audioop_lts as audioop  # Python 3.13+ via audioop-lts package
+    except ModuleNotFoundError:
+        raise RuntimeError(
+            "audioop not found. Install it with: pip install audioop-lts"
+        ) from None
 import logging
 import tempfile
 import requests
