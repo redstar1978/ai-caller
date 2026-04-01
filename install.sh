@@ -2,7 +2,7 @@
 # ╔══════════════════════════════════════════════════════════════════════════════╗
 # ║              AI-Caller – Web-Installer / Web Installer                      ║
 # ║  Nutzung / Usage:                                                           ║
-# ║    curl -sSL https://raw.githubusercontent.com/USERNAME/ai-caller/main/install.sh | bash
+# ║    curl -sSL https://raw.githubusercontent.com/redstar1978/ai-caller/main/install.sh | bash
 # ║  Oder lokal / Or locally:                                                  ║
 # ║    bash install.sh                                                          ║
 # ╚══════════════════════════════════════════════════════════════════════════════╝
@@ -19,7 +19,7 @@ error()   { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 step()    { echo -e "\n${BOLD}${BLUE}──── $1 ────${NC}"; }
 
 # ── Konfiguration / Configuration ─────────────────────────────────────────────
-REPO_URL="https://github.com/USERNAME/ai-caller"
+REPO_URL="https://github.com/redstar1978/ai-caller"
 INSTALL_DIR="${INSTALL_DIR:-/opt/ai-caller}"
 SERVICE_USER="${SERVICE_USER:-www-data}"
 PORT="${PORT:-5000}"
@@ -156,7 +156,7 @@ cat > "$SERVICE_FILE" << SERVICEEOF
 [Unit]
 Description=AI-Caller – KI-Anrufbeantworter / AI answering machine
 After=network.target
-Documentation=https://github.com/USERNAME/ai-caller
+Documentation=https://github.com/redstar1978/ai-caller
 
 [Service]
 Type=simple

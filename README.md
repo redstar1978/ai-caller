@@ -34,17 +34,17 @@
 
 **Via curl (empfohlen):**
 ```bash
-curl -sSL https://raw.githubusercontent.com/USERNAME/ai-caller/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/redstar1978/ai-caller/main/install.sh | bash
 ```
 
 **Mit eigenem Installationsverzeichnis:**
 ```bash
-INSTALL_DIR=/opt/ai-caller PORT=8080 bash <(curl -sSL https://raw.githubusercontent.com/USERNAME/ai-caller/main/install.sh)
+INSTALL_DIR=/opt/ai-caller PORT=8080 bash <(curl -sSL https://raw.githubusercontent.com/redstar1978/ai-caller/main/install.sh)
 ```
 
 **Manuell (lokale Kopie):**
 ```bash
-git clone https://github.com/USERNAME/ai-caller.git /opt/ai-caller
+git clone https://github.com/redstar1978/ai-caller.git /opt/ai-caller
 cd /opt/ai-caller
 bash install.sh
 ```
@@ -99,7 +99,7 @@ Nach der Installation:
 
 2. **In den Container einloggen und installieren:**
    ```bash
-   curl -sSL https://raw.githubusercontent.com/USERNAME/ai-caller/main/install.sh | bash
+   curl -sSL https://raw.githubusercontent.com/redstar1978/ai-caller/main/install.sh | bash
    ```
 
 3. **FritzBox-SIP einrichten:**
@@ -170,17 +170,17 @@ ai-caller/
 
 **Via curl (recommended):**
 ```bash
-curl -sSL https://raw.githubusercontent.com/USERNAME/ai-caller/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/redstar1978/ai-caller/main/install.sh | bash
 ```
 
 **With custom install directory:**
 ```bash
-INSTALL_DIR=/opt/ai-caller PORT=8080 bash <(curl -sSL https://raw.githubusercontent.com/USERNAME/ai-caller/main/install.sh)
+INSTALL_DIR=/opt/ai-caller PORT=8080 bash <(curl -sSL https://raw.githubusercontent.com/redstar1978/ai-caller/main/install.sh)
 ```
 
 **Manual (local copy):**
 ```bash
-git clone https://github.com/USERNAME/ai-caller.git /opt/ai-caller
+git clone https://github.com/redstar1978/ai-caller.git /opt/ai-caller
 cd /opt/ai-caller
 bash install.sh
 ```
@@ -235,7 +235,7 @@ After installation:
 
 2. **Log into the container and install:**
    ```bash
-   curl -sSL https://raw.githubusercontent.com/USERNAME/ai-caller/main/install.sh | bash
+   curl -sSL https://raw.githubusercontent.com/redstar1978/ai-caller/main/install.sh | bash
    ```
 
 3. **Set up FritzBox SIP:**
