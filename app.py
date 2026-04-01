@@ -654,7 +654,7 @@ def admin_agent_google_callback():
 @app.route("/api/agent/test-connection", methods=["POST"])
 @auth.admin_required
 def api_agent_test_connection():
-    from agent_tools import _get_google_events, _get_nextcloud_events
+    from agent_tools import _get_google_events, _get_nextcloud_events, _fetch_nextcloud_events_raw, _format_nc_date
     data = request.get_json() or {}
     provider = data.get("provider", "")
     cfg = db.get_all_config()
@@ -667,8 +667,26 @@ def api_agent_test_connection():
         elif provider == "nextcloud":
             if not cfg.get("agent_nextcloud_url") or not cfg.get("agent_nextcloud_username"):
                 return jsonify({"ok": False, "error": "URL und Benutzername erforderlich."})
-            result = _get_nextcloud_events(3, 0, cfg)
-            return jsonify({"ok": True, "msg": f"Nextcloud CalDAV erreichbar. {result[:120]}"})
+            raw_events = _fetch_nextcloud_events_raw(7, 0, cfg)
+            events_out = []
+            for e in raw_events:
+                dtstart = e.get("start", "")
+                dtend   = e.get("end", "")
+                all_day = len(dtstart) == 8  # VALUE=DATE format: 20250415
+                events_out.append({
+                    "summary":     e.get("summary", ""),
+                    "start":       _format_nc_date(dtstart),
+                    "end":         _format_nc_date(dtend),
+                    "all_day":     all_day,
+                    "location":    e.get("location", ""),
+                    "description": e.get("description", ""),
+                })
+            return jsonify({
+                "ok": True,
+                "msg": f"Nextcloud CalDAV erreichbar. {len(events_out)} Termin(e) in den nächsten 7 Tagen.",
+                "events": events_out,
+                "calendar": cfg.get("agent_nextcloud_calendar_name", "personal"),
+            })
         else:
             return jsonify({"ok": False, "error": "Unbekannter Anbieter."})
     except Exception as e:

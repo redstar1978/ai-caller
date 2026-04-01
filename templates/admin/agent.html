@@ -224,6 +224,14 @@
                 <i class="bi bi-plug me-1"></i>Verbindung testen
               </button>
               <div id="test-result-nextcloud" class="mt-2"></div>
+              <div id="test-calendar-nextcloud" class="mt-3" style="display:none">
+                <h6 class="text-muted mb-2">
+                  <i class="bi bi-calendar3 me-1"></i>
+                  Termine der nächsten 7 Tage –
+                  <span id="cal-name-nextcloud" class="text-body fw-semibold"></span>
+                </h6>
+                <div id="cal-events-nextcloud"></div>
+              </div>
             </div>
           </div>
 
@@ -276,6 +284,10 @@ async function testConnection(provider) {
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Teste…';
   resultEl.innerHTML = '';
+  if (provider === 'nextcloud') {
+    document.getElementById('test-calendar-nextcloud').style.display = 'none';
+    document.getElementById('cal-events-nextcloud').innerHTML = '';
+  }
   try {
     const resp = await fetch('/api/agent/test-connection', {
       method: 'POST',
@@ -285,6 +297,9 @@ async function testConnection(provider) {
     const data = await resp.json();
     if (data.ok) {
       resultEl.innerHTML = `<div class="alert alert-success py-2 small mb-0"><i class="bi bi-check-circle me-1"></i>${data.msg}</div>`;
+      if (provider === 'nextcloud' && data.events !== undefined) {
+        renderNextcloudEvents(data.events, data.calendar || '');
+      }
     } else {
       resultEl.innerHTML = `<div class="alert alert-danger py-2 small mb-0"><i class="bi bi-x-circle me-1"></i>${data.error}</div>`;
     }
@@ -294,6 +309,56 @@ async function testConnection(provider) {
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-plug me-1"></i>Verbindung testen';
   }
+}
+
+function renderNextcloudEvents(events, calName) {
+  const container = document.getElementById('test-calendar-nextcloud');
+  const eventsEl  = document.getElementById('cal-events-nextcloud');
+  document.getElementById('cal-name-nextcloud').textContent = calName;
+  container.style.display = 'block';
+
+  if (!events.length) {
+    eventsEl.innerHTML = '<p class="text-muted small mb-0"><i class="bi bi-calendar-x me-1"></i>Keine Termine in den nächsten 7 Tagen.</p>';
+    return;
+  }
+
+  // Group events by date (YYYY-MM-DD)
+  const byDay = {};
+  for (const e of events) {
+    const day = e.start ? e.start.substring(0, 10) : '—';
+    if (!byDay[day]) byDay[day] = [];
+    byDay[day].push(e);
+  }
+
+  const dayNames = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+  let html = '';
+  for (const day of Object.keys(byDay).sort()) {
+    const d    = new Date(day + 'T00:00:00');
+    const dow  = dayNames[d.getDay()];
+    const label = `${dow}, ${d.toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit', year:'numeric'})}`;
+    html += `<div class="mb-2">
+      <div class="fw-semibold small text-secondary border-bottom pb-1 mb-1">
+        <i class="bi bi-calendar-event me-1"></i>${label}
+      </div>`;
+    for (const e of byDay[day]) {
+      const time = e.all_day
+        ? '<span class="badge bg-secondary me-2">Ganztag</span>'
+        : `<span class="text-muted me-2 small">${e.start.substring(11,16)}${e.end ? ' – ' + e.end.substring(11,16) : ''}</span>`;
+      const loc  = e.location  ? `<span class="text-muted ms-2 small"><i class="bi bi-geo-alt me-1"></i>${escHtml(e.location)}</span>` : '';
+      const desc = e.description ? `<div class="text-muted small mt-1 ms-3" style="white-space:pre-wrap">${escHtml(e.description.substring(0,200))}${e.description.length>200?'…':''}</div>` : '';
+      html += `<div class="ps-2 mb-1">
+        <div class="d-flex align-items-baseline flex-wrap">
+          ${time}<strong>${escHtml(e.summary)}</strong>${loc}
+        </div>${desc}
+      </div>`;
+    }
+    html += '</div>';
+  }
+  eventsEl.innerHTML = html;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function startGoogleOAuth() {

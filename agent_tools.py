@@ -305,7 +305,8 @@ def _format_nc_date(dtstr: str) -> str:
     return dtstr[:16] if len(dtstr) >= 16 else dtstr
 
 
-def _get_nextcloud_events(days_ahead: int, days_back: int, cfg: dict) -> str:
+def _fetch_nextcloud_events_raw(days_ahead: int, days_back: int, cfg: dict) -> list:
+    """Fetch CalDAV events and return a sorted list of event dicts."""
     base = _nc_base_url(cfg)
     auth = _nc_auth(cfg)
     now = datetime.now(timezone.utc)
@@ -331,10 +332,15 @@ def _get_nextcloud_events(days_ahead: int, days_back: int, cfg: dict) -> str:
     )
     resp.raise_for_status()
     events = _parse_icalendar(resp.text)
+    return sorted(events, key=lambda x: x.get("start", ""))
+
+
+def _get_nextcloud_events(days_ahead: int, days_back: int, cfg: dict) -> str:
+    events = _fetch_nextcloud_events_raw(days_ahead, days_back, cfg)
     if not events:
         return "Keine Termine im angegebenen Zeitraum."
     lines = [f"Kalendereinträge ({days_back} Tage zurück – {days_ahead} Tage voraus):"]
-    for e in sorted(events, key=lambda x: x.get("start", "")):
+    for e in events:
         start_str = _format_nc_date(e.get("start", ""))
         line = f"\n• {start_str}: {e['summary']}"
         if e.get("location"):
