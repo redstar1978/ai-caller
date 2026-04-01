@@ -667,25 +667,29 @@ def api_agent_test_connection():
         elif provider == "nextcloud":
             if not cfg.get("agent_nextcloud_url") or not cfg.get("agent_nextcloud_username"):
                 return jsonify({"ok": False, "error": "URL und Benutzername erforderlich."})
+            from agent_tools import _discover_nextcloud_calendars
             raw_events = _fetch_nextcloud_events_raw(7, 0, cfg)
+            calendars  = _discover_nextcloud_calendars(cfg)
             events_out = []
             for e in raw_events:
                 dtstart = e.get("start", "")
                 dtend   = e.get("end", "")
                 all_day = len(dtstart) == 8  # VALUE=DATE format: 20250415
                 events_out.append({
-                    "summary":     e.get("summary", ""),
-                    "start":       _format_nc_date(dtstart),
-                    "end":         _format_nc_date(dtend),
-                    "all_day":     all_day,
-                    "location":    e.get("location", ""),
-                    "description": e.get("description", ""),
+                    "summary":       e.get("summary", ""),
+                    "start":         _format_nc_date(dtstart),
+                    "end":           _format_nc_date(dtend),
+                    "all_day":       all_day,
+                    "location":      e.get("location", ""),
+                    "description":   e.get("description", ""),
+                    "calendar_name": e.get("calendar_name", ""),
                 })
+            cal_names = [name for _, name in calendars]
             return jsonify({
-                "ok": True,
-                "msg": f"Nextcloud CalDAV erreichbar. {len(events_out)} Termin(e) in den nächsten 7 Tagen.",
-                "events": events_out,
-                "calendar": cfg.get("agent_nextcloud_calendar_name", "personal"),
+                "ok":        True,
+                "msg":       f"Nextcloud CalDAV erreichbar. {len(calendars)} Kalender gefunden, {len(events_out)} Termin(e) in den nächsten 7 Tagen.",
+                "events":    events_out,
+                "calendars": cal_names,
             })
         else:
             return jsonify({"ok": False, "error": "Unbekannter Anbieter."})

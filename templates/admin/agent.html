@@ -298,7 +298,7 @@ async function testConnection(provider) {
     if (data.ok) {
       resultEl.innerHTML = `<div class="alert alert-success py-2 small mb-0"><i class="bi bi-check-circle me-1"></i>${data.msg}</div>`;
       if (provider === 'nextcloud' && data.events !== undefined) {
-        renderNextcloudEvents(data.events, data.calendar || '');
+        renderNextcloudEvents(data.events, data.calendars || []);
       }
     } else {
       resultEl.innerHTML = `<div class="alert alert-danger py-2 small mb-0"><i class="bi bi-x-circle me-1"></i>${data.error}</div>`;
@@ -311,10 +311,29 @@ async function testConnection(provider) {
   }
 }
 
-function renderNextcloudEvents(events, calName) {
+// Assign a stable pastel color per calendar name
+const _calColors = {};
+const _palette = ['#b3d9ff','#b3f0d4','#ffd9b3','#e8b3ff','#ffd6e0','#c8f0b3','#ffe8b3','#b3eaff'];
+function _calColor(name) {
+  if (!_calColors[name]) {
+    const idx = Object.keys(_calColors).length % _palette.length;
+    _calColors[name] = _palette[idx];
+  }
+  return _calColors[name];
+}
+
+function renderNextcloudEvents(events, calNames) {
   const container = document.getElementById('test-calendar-nextcloud');
   const eventsEl  = document.getElementById('cal-events-nextcloud');
-  document.getElementById('cal-name-nextcloud').textContent = calName;
+  // Show calendar list in header
+  const nameEl = document.getElementById('cal-name-nextcloud');
+  if (calNames.length) {
+    nameEl.innerHTML = calNames.map(n =>
+      `<span class="badge rounded-pill me-1" style="background:${_calColor(n)};color:#333">${escHtml(n)}</span>`
+    ).join('');
+  } else {
+    nameEl.textContent = '';
+  }
   container.style.display = 'block';
 
   if (!events.length) {
@@ -333,10 +352,10 @@ function renderNextcloudEvents(events, calName) {
   const dayNames = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
   let html = '';
   for (const day of Object.keys(byDay).sort()) {
-    const d    = new Date(day + 'T00:00:00');
-    const dow  = dayNames[d.getDay()];
+    const d     = new Date(day + 'T00:00:00');
+    const dow   = dayNames[d.getDay()];
     const label = `${dow}, ${d.toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit', year:'numeric'})}`;
-    html += `<div class="mb-2">
+    html += `<div class="mb-3">
       <div class="fw-semibold small text-secondary border-bottom pb-1 mb-1">
         <i class="bi bi-calendar-event me-1"></i>${label}
       </div>`;
@@ -344,11 +363,18 @@ function renderNextcloudEvents(events, calName) {
       const time = e.all_day
         ? '<span class="badge bg-secondary me-2">Ganztag</span>'
         : `<span class="text-muted me-2 small">${e.start.substring(11,16)}${e.end ? ' – ' + e.end.substring(11,16) : ''}</span>`;
-      const loc  = e.location  ? `<span class="text-muted ms-2 small"><i class="bi bi-geo-alt me-1"></i>${escHtml(e.location)}</span>` : '';
-      const desc = e.description ? `<div class="text-muted small mt-1 ms-3" style="white-space:pre-wrap">${escHtml(e.description.substring(0,200))}${e.description.length>200?'…':''}</div>` : '';
+      const loc  = e.location
+        ? `<span class="text-muted ms-2 small"><i class="bi bi-geo-alt me-1"></i>${escHtml(e.location)}</span>`
+        : '';
+      const desc = e.description
+        ? `<div class="text-muted small mt-1 ms-3" style="white-space:pre-wrap">${escHtml(e.description.substring(0,200))}${e.description.length>200?'…':''}</div>`
+        : '';
+      const calBadge = e.calendar_name
+        ? `<span class="badge rounded-pill ms-2 small" style="background:${_calColor(e.calendar_name)};color:#333">${escHtml(e.calendar_name)}</span>`
+        : '';
       html += `<div class="ps-2 mb-1">
         <div class="d-flex align-items-baseline flex-wrap">
-          ${time}<strong>${escHtml(e.summary)}</strong>${loc}
+          ${time}<strong>${escHtml(e.summary)}</strong>${calBadge}${loc}
         </div>${desc}
       </div>`;
     }

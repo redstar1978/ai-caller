@@ -276,6 +276,68 @@ def _nc_auth(cfg: dict):
     return (cfg.get("agent_nextcloud_username", ""), cfg.get("agent_nextcloud_app_password", ""))
 
 
+def _discover_nextcloud_calendars(cfg: dict) -> list:
+    """PROPFIND the calendar home and return [(full_url, displayname)] for every
+    VEVENT-capable calendar the user owns or has been granted access to."""
+    import xml.etree.ElementTree as ET
+    base_url = cfg.get("agent_nextcloud_url", "").rstrip("/")
+    user     = cfg.get("agent_nextcloud_username", "")
+    auth     = _nc_auth(cfg)
+    home     = f"{base_url}/remote.php/dav/calendars/{user}/"
+    body = """<?xml version="1.0" encoding="utf-8" ?>
+<D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:prop>
+    <D:resourcetype/>
+    <D:displayname/>
+    <C:supported-calendar-component-set/>
+  </D:prop>
+</D:propfind>"""
+    resp = requests.request(
+        "PROPFIND", home,
+        data=body.encode("utf-8"),
+        auth=auth,
+        headers={"Content-Type": "application/xml; charset=utf-8", "Depth": "1"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    ns = {"D": "DAV:", "C": "urn:ietf:params:xml:ns:caldav"}
+    try:
+        root = ET.fromstring(resp.text)
+    except ET.ParseError:
+        return [(_nc_base_url(cfg), cfg.get("agent_nextcloud_calendar_name", "personal"))]
+    calendars = []
+    for response in root.findall("D:response", ns):
+        href_el = response.find("D:href", ns)
+        if href_el is None:
+            continue
+        href = (href_el.text or "").strip()
+        # Skip the calendar home collection itself
+        if href.rstrip("/") == f"/remote.php/dav/calendars/{user}":
+            continue
+        prop = response.find("D:propstat/D:prop", ns)
+        if prop is None:
+            continue
+        rt = prop.find("D:resourcetype", ns)
+        if rt is None or rt.find("C:calendar", ns) is None:
+            continue
+        # Only include calendars that support VEVENT
+        comp_set = prop.find("C:supported-calendar-component-set", ns)
+        if comp_set is not None:
+            names = [c.get("name", "") for c in comp_set.findall("C:comp", ns)]
+            if "VEVENT" not in names:
+                continue
+        dn_el = prop.find("D:displayname", ns)
+        displayname = (dn_el.text or "").strip() if dn_el is not None else ""
+        if not displayname:
+            displayname = href.rstrip("/").split("/")[-1]
+        full_url = href if href.startswith("http") else f"{base_url}{href}"
+        calendars.append((full_url.rstrip("/"), displayname))
+    # Fallback: if discovery returned nothing, use the configured single calendar
+    if not calendars:
+        calendars = [(_nc_base_url(cfg), cfg.get("agent_nextcloud_calendar_name", "personal"))]
+    return calendars
+
+
 def _parse_icalendar(ical_text: str) -> list:
     """Minimal VEVENT parser — returns list of dicts."""
     events = []
@@ -306,13 +368,13 @@ def _format_nc_date(dtstr: str) -> str:
 
 
 def _fetch_nextcloud_events_raw(days_ahead: int, days_back: int, cfg: dict) -> list:
-    """Fetch CalDAV events and return a sorted list of event dicts."""
-    base = _nc_base_url(cfg)
+    """Fetch events from ALL accessible calendars (owned + shared) and return
+    a sorted list of event dicts, each with an extra 'calendar_name' field."""
     auth = _nc_auth(cfg)
-    now = datetime.now(timezone.utc)
+    now   = datetime.now(timezone.utc)
     start = (now - timedelta(days=days_back)).strftime("%Y%m%dT%H%M%SZ")
-    end = (now + timedelta(days=days_ahead)).strftime("%Y%m%dT%H%M%SZ")
-    body = f"""<?xml version="1.0" encoding="utf-8" ?>
+    end   = (now + timedelta(days=days_ahead)).strftime("%Y%m%dT%H%M%SZ")
+    report_body = f"""<?xml version="1.0" encoding="utf-8" ?>
 <C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
   <D:prop><D:getetag/><C:calendar-data/></D:prop>
   <C:filter>
@@ -323,16 +385,24 @@ def _fetch_nextcloud_events_raw(days_ahead: int, days_back: int, cfg: dict) -> l
     </C:comp-filter>
   </C:filter>
 </C:calendar-query>"""
-    resp = requests.request(
-        "REPORT", base,
-        data=body.encode("utf-8"),
-        auth=auth,
-        headers={"Content-Type": "application/xml; charset=utf-8", "Depth": "1"},
-        timeout=15,
-    )
-    resp.raise_for_status()
-    events = _parse_icalendar(resp.text)
-    return sorted(events, key=lambda x: x.get("start", ""))
+    calendars = _discover_nextcloud_calendars(cfg)
+    all_events = []
+    for cal_url, cal_name in calendars:
+        try:
+            resp = requests.request(
+                "REPORT", cal_url,
+                data=report_body.encode("utf-8"),
+                auth=auth,
+                headers={"Content-Type": "application/xml; charset=utf-8", "Depth": "1"},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            for e in _parse_icalendar(resp.text):
+                e["calendar_name"] = cal_name
+                all_events.append(e)
+        except Exception:
+            continue  # skip calendars that are not reachable
+    return sorted(all_events, key=lambda x: x.get("start", ""))
 
 
 def _get_nextcloud_events(days_ahead: int, days_back: int, cfg: dict) -> str:
