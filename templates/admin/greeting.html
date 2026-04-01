@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+{% block title %}Begrüßung & Verhalten – AI-Caller Admin{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-9">
+    <h4 class="mb-1"><i class="bi bi-chat-text me-2 text-primary"></i>Begrüßung & Verhalten</h4>
+    <p class="text-secondary mb-4">Lege fest, wie der KI-Anrufbeantworter Anrufer begrüßt und wie er sich verhält.</p>
+
+    {% if saved %}
+    <div class="alert alert-success alert-dismissible fade show">
+      <i class="bi bi-check-circle me-2"></i>Einstellungen gespeichert.
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+
+    <form method="post">
+
+      <!-- ── Begrüßungstext ── -->
+      <div class="card mb-4">
+        <div class="card-header"><h6 class="mb-0"><i class="bi bi-megaphone me-2"></i>Begrüßungstext</h6></div>
+        <div class="card-body">
+          <div class="alert alert-info small mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            Dieser Text wird zu Beginn jedes Anrufs per Text-to-Speech vorgelesen.
+          </div>
+          <textarea name="greeting_text" class="form-control" rows="4"
+                    placeholder="z.B.: Hallo, Sie haben den Anrufbeantworter von Familie Müller erreicht…">{{ cfg.greeting_text }}</textarea>
+        </div>
+      </div>
+
+      <!-- ── Verhaltens-Prompt ── -->
+      <div class="card mb-4">
+        <div class="card-header"><h6 class="mb-0"><i class="bi bi-robot me-2"></i>Verhaltens-Prompt</h6></div>
+        <div class="card-body">
+          <div class="alert alert-info small mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            Dieser System-Prompt wird an das KI-Modell übergeben und bestimmt das Verhalten der KI.
+            Gib hier Kontext: Name, Öffnungszeiten, was die KI tun soll.
+          </div>
+          <textarea name="behavior_prompt" class="form-control font-monospace" rows="8"
+                    placeholder="Systemanweisung für die KI…">{{ cfg.behavior_prompt }}</textarea>
+        </div>
+      </div>
+
+      <!-- ── Zeitplan ── -->
+      <div class="card mb-4">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <h6 class="mb-0"><i class="bi bi-clock me-2"></i>Aktivzeiten</h6>
+          {% set within = status.schedule_active %}
+          <span class="badge {% if within %}bg-success{% else %}bg-secondary{% endif %}">
+            <i class="bi bi-{% if within %}check-circle{% else %}pause-circle{% endif %} me-1"></i>
+            {{ status.schedule_reason }}
+          </span>
+        </div>
+        <div class="card-body">
+          <div class="alert alert-info small mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            Lege fest, wann der Anrufbeantworter aktiv sein soll.
+            Außerhalb der Aktivzeit werden eingehende Anrufe abgelehnt (Besetztzeichen).
+          </div>
+
+          <!-- Mode switch -->
+          <div class="mb-4">
+            <div class="btn-group" role="group">
+              <input type="radio" class="btn-check" name="schedule_mode" value="always"
+                     id="sched-always" {% if cfg.schedule_mode != 'scheduled' %}checked{% endif %}
+                     onchange="toggleSchedule(false)">
+              <label class="btn btn-outline-success" for="sched-always">
+                <i class="bi bi-infinity me-1"></i>Immer aktiv
+              </label>
+              <input type="radio" class="btn-check" name="schedule_mode" value="scheduled"
+                     id="sched-time" {% if cfg.schedule_mode == 'scheduled' %}checked{% endif %}
+                     onchange="toggleSchedule(true)">
+              <label class="btn btn-outline-primary" for="sched-time">
+                <i class="bi bi-calendar-clock me-1"></i>Zeitplan
+              </label>
+            </div>
+          </div>
+
+          <!-- Schedule details -->
+          <div id="schedule-details" {% if cfg.schedule_mode != 'scheduled' %}style="opacity:.45;pointer-events:none"{% endif %}>
+
+            <!-- Days -->
+            <div class="mb-4">
+              <label class="form-label fw-semibold">Aktive Wochentage</label>
+              <div class="d-flex flex-wrap gap-2">
+                {% set day_names = [('0','Montag'),('1','Dienstag'),('2','Mittwoch'),('3','Donnerstag'),
+                                    ('4','Freitag'),('5','Samstag'),('6','Sonntag')] %}
+                {% set active_days = cfg.schedule_days.split(',') if cfg.schedule_days else ['0','1','2','3','4','5','6'] %}
+                {% for val, label in day_names %}
+                <div class="form-check day-toggle">
+                  <input class="btn-check" type="checkbox" name="schedule_days_cb"
+                         value="{{ val }}" id="day-{{ val }}"
+                         {% if val in active_days %}checked{% endif %}>
+                  <label class="btn btn-sm {% if val in ['5','6'] %}btn-outline-warning{% else %}btn-outline-secondary{% endif %}"
+                         for="day-{{ val }}">{{ label }}</label>
+                </div>
+                {% endfor %}
+              </div>
+              <small class="text-secondary d-block mt-1">
+                Mindestens einen Tag auswählen.
+              </small>
+            </div>
+
+            <!-- Time window -->
+            <div class="row g-3 mb-3">
+              <div class="col-md-3">
+                <label class="form-label fw-semibold">Aktiv ab</label>
+                <div class="input-group">
+                  <span class="input-group-text"><i class="bi bi-sunrise"></i></span>
+                  <input type="time" name="schedule_start" class="form-control"
+                         value="{{ cfg.schedule_start or '08:00' }}">
+                </div>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label fw-semibold">Aktiv bis</label>
+                <div class="input-group">
+                  <span class="input-group-text"><i class="bi bi-sunset"></i></span>
+                  <input type="time" name="schedule_end" class="form-control"
+                         value="{{ cfg.schedule_end or '20:00' }}">
+                </div>
+              </div>
+              <div class="col-md-6 d-flex align-items-end">
+                <div class="alert alert-secondary small py-2 mb-0 w-100">
+                  <i class="bi bi-info-circle me-1"></i>
+                  Für Nacht-Betrieb (z.B. 22:00–06:00) einfach Ende &lt; Start setzen –
+                  dann ist der Beantworter über Mitternacht aktiv.
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Gesprächseinstellungen ── -->
+      <div class="card mb-4">
+        <div class="card-header"><h6 class="mb-0"><i class="bi bi-sliders me-2"></i>Gesprächseinstellungen</h6></div>
+        <div class="card-body row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Max. Gesprächsrunden</label>
+            <input type="number" name="max_conversation_turns" class="form-control"
+                   min="1" max="10" value="{{ cfg.max_conversation_turns }}">
+            <small class="text-secondary">Wie oft darf die KI antworten (1–10). Danach wird aufgelegt.</small>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Annahme-Verzögerung (Sekunden)</label>
+            <input type="number" name="answer_delay_seconds" class="form-control"
+                   min="0" max="30" step="0.5" value="{{ cfg.answer_delay_seconds or '2' }}">
+            <small class="text-secondary">Wartezeit nach eingehendem Anruf, bevor das System abnimmt. Standard: 2 Sek.</small>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Optionen</label>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="save_to_inbox"
+                     value="true" id="chk-inbox" {% if cfg.save_to_inbox == 'true' %}checked{% endif %}>
+              <label class="form-check-label" for="chk-inbox">Nachrichten im Posteingang speichern</label>
+            </div>
+            <div class="form-check mt-2">
+              <input class="form-check-input" type="checkbox" name="save_recordings"
+                     value="true" id="chk-rec" {% if cfg.save_recordings == 'true' %}checked{% endif %}>
+              <label class="form-check-label" for="chk-rec">Aufnahmen als WAV speichern</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Stille-Erkennung & Wartemelodie ── -->
+      <div class="card mb-4">
+        <div class="card-header"><h6 class="mb-0"><i class="bi bi-soundwave me-2"></i>Stille-Erkennung & Wartemelodie</h6></div>
+        <div class="card-body">
+          <div class="alert alert-info small mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            Lege fest, wie lange eine Gesprächspause sein darf, bevor das System die Aufnahme beendet.
+            Während der KI-Verarbeitung (Transkription, Antwort, Sprachausgabe) wird eine kurze Wartemelodie
+            abgespielt, gefolgt von einem Piepton der dem Anrufer signalisiert, dass er jetzt sprechen kann.
+          </div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Stille-Timeout (Sekunden)</label>
+              <input type="number" name="silence_timeout_seconds" class="form-control"
+                     min="0.5" max="15" step="0.5" value="{{ cfg.silence_timeout_seconds or '3.0' }}">
+              <small class="text-secondary">Pause nach der die Aufnahme endet. Standard: 3.0 Sek.</small>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Stille-Schwellwert (RMS 1–30)</label>
+              <input type="number" name="silence_threshold" class="form-control"
+                     min="1" max="30" step="1" value="{{ cfg.silence_threshold or '2' }}">
+              <small class="text-secondary">Empfindlichkeit: kleiner = empfindlicher. Standard: 2</small>
+            </div>
+            <div class="col-md-4 d-flex align-items-center">
+              <div class="mt-2">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="hold_music_enabled"
+                         value="true" id="chk-hold"
+                         {% if cfg.hold_music_enabled != 'false' %}checked{% endif %}>
+                  <label class="form-check-label" for="chk-hold">
+                    <strong>Wartemelodie aktivieren</strong>
+                  </label>
+                </div>
+                <small class="text-secondary d-block mt-1">
+                  Spielt eine Melodie während der KI-Verarbeitung ab, damit der Anrufer weiß, dass das System noch aktiv ist.
+                </small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Rückruf-Einstellungen ── -->
+      <div class="card mb-4">
+        <div class="card-header"><h6 class="mb-0"><i class="bi bi-reply-fill me-2 text-primary"></i>Rückruf-Einstellungen</h6></div>
+        <div class="card-body">
+          <div class="alert alert-info small mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            Wenn du auf eine Nachricht im Posteingang antwortest, ruft die KI den Anrufer zurück
+            und übermittelt deine Antwort. Hier kannst du die Begrüßung für diesen Rückruf anpassen.
+            Verwende <code>{name}</code> als Platzhalter für den Namen des Anrufers.
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Begrüßungstext beim Rückruf</label>
+            <textarea name="callback_greeting" class="form-control" rows="3"
+                      placeholder="z.B.: Hallo{name}, hier ist Ihr KI-Anrufbeantworter. Ich habe eine Antwort für Sie.">{{ cfg.callback_greeting or '' }}</textarea>
+            <small class="text-secondary">Leer lassen für Standardtext. <code>{name}</code> wird durch den Anrufernamen ersetzt (falls bekannt).</small>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-save me-1"></i>Speichern
+      </button>
+    </form>
+
+    <!-- ── Test-Anruf ── -->
+    <div class="card mt-4 mb-4" id="test-call-card">
+      <div class="card-header"><h6 class="mb-0"><i class="bi bi-telephone-outbound me-2 text-success"></i>Test-Rückruf</h6></div>
+      <div class="card-body">
+        <div class="alert alert-warning small mb-3">
+          <i class="bi bi-exclamation-triangle me-1"></i>
+          Das SIP-Telefon muss aktiv und verbunden sein. Der angegebenen Nummer wird ein Anruf zugestellt.
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Rufnummer</label>
+            <input type="tel" id="test-number" class="form-control" placeholder="+4915112345678">
+          </div>
+          <div class="col-md-8">
+            <label class="form-label fw-semibold">Testansage (TTS)</label>
+            <input type="text" id="test-text" class="form-control"
+                   placeholder="Hallo, das ist ein Testanruf Ihres KI-Anrufbeantworters."
+                   value="Hallo, das ist ein Testanruf Ihres KI-Anrufbeantworters.">
+          </div>
+        </div>
+        <button class="btn btn-success" id="test-call-btn" onclick="startTestCall()">
+          <i class="bi bi-telephone-outbound me-1"></i>Jetzt anrufen
+        </button>
+        <div id="test-call-result" class="mt-2 small"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleSchedule(enabled) {
+  const el = document.getElementById('schedule-details');
+  el.style.opacity = enabled ? '1' : '0.45';
+  el.style.pointerEvents = enabled ? '' : 'none';
+}
+
+async function startTestCall() {
+  const number = document.getElementById('test-number').value.trim();
+  const text   = document.getElementById('test-text').value.trim();
+  const btn    = document.getElementById('test-call-btn');
+  const result = document.getElementById('test-call-result');
+  if (!number) { result.innerHTML = '<span class="text-danger">Bitte Rufnummer eingeben.</span>'; return; }
+  if (!text)   { result.innerHTML = '<span class="text-danger">Bitte Testansage eingeben.</span>'; return; }
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Ruft an…';
+  result.innerHTML = '';
+  try {
+    const r = await fetch('/api/callback/test', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({number, text}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      result.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${d.message}</span>`;
+    } else {
+      result.innerHTML = `<span class="text-danger"><i class="bi bi-x-circle me-1"></i>${d.error}</span>`;
+    }
+  } catch(e) {
+    result.innerHTML = `<span class="text-danger">Fehler: ${e}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-telephone-outbound me-1"></i>Jetzt anrufen';
+  }
+}
+</script>
+{% endblock %}

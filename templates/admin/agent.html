@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+{% block title %}Agent-Fähigkeiten – AI-Caller Admin{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-10">
+    <h4 class="mb-1"><i class="bi bi-robot me-2 text-primary"></i>Agent-Fähigkeiten</h4>
+    <p class="text-secondary mb-4">
+      Gib dem KI-Agenten Zugang zu Websuche und Kalender. Wie diese Fähigkeiten genutzt werden,
+      wird im <a href="{{ url_for('admin_greeting') }}">Verhaltens-Prompt</a> festgelegt.
+    </p>
+
+    {% if saved %}
+    <div class="alert alert-success alert-dismissible fade show">
+      <i class="bi bi-check-circle me-2"></i>Gespeichert.
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+
+    {% if oauth_error is defined and oauth_error %}
+    <div class="alert alert-danger alert-dismissible fade show">
+      <i class="bi bi-exclamation-triangle me-2"></i>{{ oauth_error }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+
+    {% if request.args.get('oauth') == 'ok' %}
+    <div class="alert alert-success alert-dismissible fade show">
+      <i class="bi bi-check-circle me-2"></i>Google-Konto erfolgreich verbunden. Refresh-Token gespeichert.
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+
+    <form method="post" id="agent-form">
+
+      <!-- ── Websuche ───────────────────────────────────────────────────── -->
+      <div class="card mb-4">
+        <div class="card-header d-flex align-items-center gap-2">
+          <i class="bi bi-search text-info"></i>
+          <h6 class="mb-0">Websuche</h6>
+          <div class="form-check form-switch ms-auto mb-0">
+            <input class="form-check-input" type="checkbox" name="agent_web_search_enabled"
+                   id="search-enabled" value="true"
+                   {% if cfg.get('agent_web_search_enabled') == 'true' %}checked{% endif %}
+                   onchange="toggleSection('search-cfg', this.checked)">
+            <label class="form-check-label" for="search-enabled">Aktiviert</label>
+          </div>
+        </div>
+        <div class="card-body" id="search-cfg"
+             {% if cfg.get('agent_web_search_enabled') != 'true' %}style="display:none"{% endif %}>
+          <div class="alert alert-secondary small">
+            <i class="bi bi-info-circle me-1"></i>
+            Nutzt die <strong>Brave Search API</strong>. Kostenlos bis 2.000 Anfragen/Monat.
+            API-Key unter <a href="https://brave.com/search/api/" target="_blank" class="alert-link">brave.com/search/api</a> holen.
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Brave Search API-Key</label>
+            <input type="password" class="form-control font-monospace" name="agent_brave_api_key"
+                   value="{{ cfg.get('agent_brave_api_key', '') }}" autocomplete="off"
+                   placeholder="BSA...">
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Kalender ───────────────────────────────────────────────────── -->
+      <div class="card mb-4">
+        <div class="card-header d-flex align-items-center gap-2">
+          <i class="bi bi-calendar3 text-warning"></i>
+          <h6 class="mb-0">Kalender-Zugang</h6>
+          <div class="form-check form-switch ms-auto mb-0">
+            <input class="form-check-input" type="checkbox" name="agent_calendar_enabled"
+                   id="cal-enabled" value="true"
+                   {% if cfg.get('agent_calendar_enabled') == 'true' %}checked{% endif %}
+                   onchange="toggleSection('cal-cfg', this.checked)">
+            <label class="form-check-label" for="cal-enabled">Aktiviert</label>
+          </div>
+        </div>
+        <div class="card-body" id="cal-cfg"
+             {% if cfg.get('agent_calendar_enabled') != 'true' %}style="display:none"{% endif %}>
+
+          <!-- Mode -->
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Modus</label>
+            <div class="btn-group w-100" role="group">
+              <input type="radio" class="btn-check" name="agent_calendar_mode" value="readonly"
+                     id="cal-readonly" {% if cfg.get('agent_calendar_mode', 'readonly') == 'readonly' %}checked{% endif %}
+                     onchange="updateCalMode()">
+              <label class="btn btn-outline-secondary" for="cal-readonly">
+                <i class="bi bi-eye me-1"></i>Nur Lesen
+              </label>
+              <input type="radio" class="btn-check" name="agent_calendar_mode" value="full"
+                     id="cal-full" {% if cfg.get('agent_calendar_mode') == 'full' %}checked{% endif %}
+                     onchange="updateCalMode()">
+              <label class="btn btn-outline-warning" for="cal-full">
+                <i class="bi bi-pencil-square me-1"></i>Lesen + Schreiben
+              </label>
+            </div>
+            <div class="form-text" id="cal-mode-hint">
+              {% if cfg.get('agent_calendar_mode') == 'full' %}
+              Agent kann Termine lesen, erstellen und löschen.
+              {% else %}
+              Agent kann nur Termine lesen.
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Provider -->
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Anbieter</label>
+            <div class="btn-group w-100" role="group">
+              <input type="radio" class="btn-check" name="agent_calendar_provider" value="none"
+                     id="cal-none" {% if cfg.get('agent_calendar_provider', 'none') == 'none' %}checked{% endif %}
+                     onchange="showProvider('none')">
+              <label class="btn btn-outline-secondary" for="cal-none">Keiner</label>
+              <input type="radio" class="btn-check" name="agent_calendar_provider" value="google"
+                     id="cal-google" {% if cfg.get('agent_calendar_provider') == 'google' %}checked{% endif %}
+                     onchange="showProvider('google')">
+              <label class="btn btn-outline-danger" for="cal-google">
+                <i class="bi bi-google me-1"></i>Google Calendar
+              </label>
+              <input type="radio" class="btn-check" name="agent_calendar_provider" value="nextcloud"
+                     id="cal-nextcloud" {% if cfg.get('agent_calendar_provider') == 'nextcloud' %}checked{% endif %}
+                     onchange="showProvider('nextcloud')">
+              <label class="btn btn-outline-info" for="cal-nextcloud">
+                <i class="bi bi-cloud me-1"></i>Nextcloud
+              </label>
+            </div>
+          </div>
+
+          <!-- Google Calendar config -->
+          <div id="provider-google"
+               {% if cfg.get('agent_calendar_provider') != 'google' %}style="display:none"{% endif %}>
+            <div class="alert alert-secondary small">
+              <i class="bi bi-info-circle me-1"></i>
+              <strong>Google Calendar OAuth2-Setup:</strong><br>
+              1. Gehe zu <a href="https://console.cloud.google.com/" target="_blank" class="alert-link">Google Cloud Console</a><br>
+              2. Erstelle ein Projekt → APIs &amp; Services → Credentials → OAuth 2.0 Client ID (Typ: Web)<br>
+              3. Autorisierte Redirect-URI: <code id="redirect-uri">{{ request.host_url }}admin/agent/google-callback</code><br>
+              4. Client-ID und Secret unten eintragen, dann Speichern und "Mit Google verbinden" klicken.
+            </div>
+            <div class="row g-3 mb-3">
+              <div class="col-md-6">
+                <label class="form-label">Client-ID</label>
+                <input type="text" class="form-control font-monospace" name="agent_google_client_id"
+                       value="{{ cfg.get('agent_google_client_id', '') }}" placeholder="....apps.googleusercontent.com">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Client-Secret</label>
+                <input type="password" class="form-control font-monospace" name="agent_google_client_secret"
+                       value="{{ cfg.get('agent_google_client_secret', '') }}" autocomplete="off">
+              </div>
+              <div class="col-md-8">
+                <label class="form-label">Kalender-ID</label>
+                <input type="text" class="form-control" name="agent_google_calendar_id"
+                       value="{{ cfg.get('agent_google_calendar_id', 'primary') }}"
+                       placeholder="primary oder name@group.calendar.google.com">
+                <div class="form-text">Für den Hauptkalender: <code>primary</code></div>
+              </div>
+              <div class="col-md-4 d-flex align-items-end">
+                {% if cfg.get('agent_google_refresh_token') %}
+                <div class="alert alert-success py-2 mb-0 w-100 small">
+                  <i class="bi bi-check-circle me-1"></i>Google-Konto verbunden
+                </div>
+                {% else %}
+                <div class="alert alert-warning py-2 mb-0 w-100 small">
+                  <i class="bi bi-exclamation-triangle me-1"></i>Noch nicht verbunden
+                </div>
+                {% endif %}
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Refresh-Token (manuell, optional)</label>
+              <input type="password" class="form-control font-monospace" name="agent_google_refresh_token"
+                     value="{{ cfg.get('agent_google_refresh_token', '') }}" autocomplete="off"
+                     placeholder="Wird automatisch gesetzt nach OAuth-Flow">
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+              <button type="button" class="btn btn-outline-danger" onclick="startGoogleOAuth()">
+                <i class="bi bi-google me-1"></i>Mit Google verbinden (OAuth2)
+              </button>
+              <button type="button" class="btn btn-outline-secondary" onclick="testConnection('google')" id="btn-test-google">
+                <i class="bi bi-plug me-1"></i>Verbindung testen
+              </button>
+            </div>
+            <div id="test-result-google" class="mt-2"></div>
+          </div>
+
+          <!-- Nextcloud config -->
+          <div id="provider-nextcloud"
+               {% if cfg.get('agent_calendar_provider') != 'nextcloud' %}style="display:none"{% endif %}>
+            <div class="alert alert-secondary small">
+              <i class="bi bi-info-circle me-1"></i>
+              Verbindung via <strong>CalDAV</strong> (Standard-Protokoll). App-Passwort unter
+              Nextcloud → Einstellungen → Sicherheit → App-Passwörter erstellen.
+            </div>
+            <div class="row g-3 mb-3">
+              <div class="col-md-6">
+                <label class="form-label">Nextcloud-URL</label>
+                <input type="url" class="form-control" name="agent_nextcloud_url"
+                       value="{{ cfg.get('agent_nextcloud_url', '') }}"
+                       placeholder="https://cloud.example.com">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Benutzername</label>
+                <input type="text" class="form-control" name="agent_nextcloud_username"
+                       value="{{ cfg.get('agent_nextcloud_username', '') }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">App-Passwort</label>
+                <input type="password" class="form-control font-monospace" name="agent_nextcloud_app_password"
+                       value="{{ cfg.get('agent_nextcloud_app_password', '') }}" autocomplete="off">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Kalender-Name</label>
+                <input type="text" class="form-control" name="agent_nextcloud_calendar_name"
+                       value="{{ cfg.get('agent_nextcloud_calendar_name', 'personal') }}"
+                       placeholder="personal">
+                <div class="form-text">Interner Name, sichtbar in der CalDAV-URL</div>
+              </div>
+            </div>
+
+            <div class="mt-3">
+              <button type="button" class="btn btn-outline-secondary" onclick="testConnection('nextcloud')" id="btn-test-nextcloud">
+                <i class="bi bi-plug me-1"></i>Verbindung testen
+              </button>
+              <div id="test-result-nextcloud" class="mt-2"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── Verhaltens-Prompt Hinweis ──────────────────────────────────── -->
+      <div class="alert alert-info small">
+        <i class="bi bi-lightbulb me-1"></i>
+        <strong>Tipp:</strong> Lege im <a href="{{ url_for('admin_greeting') }}" class="alert-link">Verhaltens-Prompt</a>
+        fest, wie der Agent diese Fähigkeiten nutzen soll. Beispiel:<br>
+        <em>"Du hast Zugang zum Google-Kalender. Wenn jemand einen Termin anfragen oder eintragen möchte,
+        nutze die Kalender-Tools. Für aktuelle Informationen kannst du das Web durchsuchen."</em>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-floppy me-1"></i>Speichern
+        </button>
+      </div>
+
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleSection(id, show) {
+  document.getElementById(id).style.display = show ? '' : 'none';
+}
+
+function showProvider(provider) {
+  ['google', 'nextcloud'].forEach(p => {
+    const el = document.getElementById('provider-' + p);
+    if (el) el.style.display = (p === provider) ? '' : 'none';
+  });
+}
+
+function updateCalMode() {
+  const full = document.getElementById('cal-full').checked;
+  document.getElementById('cal-mode-hint').textContent = full
+    ? 'Agent kann Termine lesen, erstellen und löschen.'
+    : 'Agent kann nur Termine lesen.';
+}
+
+async function testConnection(provider) {
+  const btn = document.getElementById('btn-test-' + provider);
+  const resultEl = document.getElementById('test-result-' + provider);
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Teste…';
+  resultEl.innerHTML = '';
+  try {
+    const resp = await fetch('/api/agent/test-connection', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({provider}),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      resultEl.innerHTML = `<div class="alert alert-success py-2 small mb-0"><i class="bi bi-check-circle me-1"></i>${data.msg}</div>`;
+    } else {
+      resultEl.innerHTML = `<div class="alert alert-danger py-2 small mb-0"><i class="bi bi-x-circle me-1"></i>${data.error}</div>`;
+    }
+  } catch(e) {
+    resultEl.innerHTML = `<div class="alert alert-danger py-2 small mb-0"><i class="bi bi-x-circle me-1"></i>Netzwerkfehler: ${e}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-plug me-1"></i>Verbindung testen';
+  }
+}
+
+function startGoogleOAuth() {
+  const clientId = document.querySelector('[name=agent_google_client_id]').value.trim();
+  if (!clientId) {
+    alert('Bitte zuerst die Client-ID eintragen und speichern.');
+    return;
+  }
+  const redirectUri = encodeURIComponent(window.location.origin + '/admin/agent/google-callback');
+  const scope = encodeURIComponent('https://www.googleapis.com/auth/calendar');
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&access_type=offline&prompt=consent`;
+  window.location.href = url;
+}
+</script>
+{% endblock %}

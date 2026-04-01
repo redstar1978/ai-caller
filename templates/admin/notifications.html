@@ -1,0 +1,466 @@
+{% extends "base.html" %}
+{% block title %}Benachrichtigungen – AI-Caller Admin{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-9">
+    <h4 class="mb-1"><i class="bi bi-bell me-2 text-primary"></i>Benachrichtigungen</h4>
+    <p class="text-secondary mb-4">Erhalte nach jedem Anruf eine Benachrichtigung per Telegram oder E-Mail.</p>
+
+    <!-- ── Telegram ─────────────────────────────────────────────── -->
+    <div class="card mb-4" id="tg-card">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center gap-2">
+          <i class="bi bi-telegram text-info fs-5"></i>
+          <h6 class="mb-0">Telegram-Bot</h6>
+        </div>
+        <div class="form-check form-switch mb-0">
+          <input class="form-check-input" type="checkbox" name="telegram_enabled"
+                 value="true" id="tg-enabled"
+                 {% if cfg.telegram_enabled == 'true' %}checked{% endif %}
+                 onchange="toggleSection('tg-section', this.checked)">
+          <label class="form-check-label" for="tg-enabled">Aktiviert</label>
+        </div>
+      </div>
+      <div class="card-body" id="tg-section"
+           {% if cfg.telegram_enabled != 'true' %}style="opacity:0.5;pointer-events:none"{% endif %}>
+
+        <!-- Setup guide -->
+        <div class="alert alert-secondary small mb-3">
+          <strong><i class="bi bi-info-circle me-1"></i>Einrichtung in 4 Schritten</strong>
+          <ol class="mb-0 mt-2">
+            <li>Öffne Telegram und schreibe <strong>@BotFather</strong> – sende <code>/newbot</code> und vergib einen Namen</li>
+            <li>BotFather gibt dir ein <strong>API-Token</strong> (z.B. <code>123456789:ABC…</code>) – trage es unten ein</li>
+            <li>Sende deinem neuen Bot eine Nachricht (z.B. <code>/start</code>), dann klicke <strong>Chat-ID ermitteln</strong></li>
+            <li>Klicke <strong>Test-Nachricht senden</strong> um alles zu prüfen, dann speichern</li>
+          </ol>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Bot-Token <span class="text-danger">*</span></label>
+            <input type="password" name="telegram_bot_token" id="tg-token" class="form-control"
+                   value="{{ cfg.telegram_bot_token }}" placeholder="123456789:ABC…"
+                   autocomplete="off">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Chat-ID <span class="text-danger">*</span></label>
+            <div class="input-group">
+              <input type="text" name="telegram_chat_id" id="tg-chat-id" class="form-control"
+                     value="{{ cfg.telegram_chat_id }}" placeholder="Automatisch ermitteln…">
+              <button type="button" class="btn btn-outline-secondary" onclick="fetchChatId()" id="tg-fetch-btn">
+                <i class="bi bi-search me-1"></i>Chat-ID ermitteln
+              </button>
+            </div>
+            <div id="tg-fetch-result" class="small mt-1"></div>
+          </div>
+        </div>
+
+        <div class="mt-3 d-flex align-items-center gap-2">
+          <button type="button" class="btn btn-sm btn-outline-info" onclick="testTelegram()" id="tg-test-btn">
+            <i class="bi bi-send me-1"></i>Test-Nachricht senden
+          </button>
+          <span id="tg-test-result" class="small"></span>
+        </div>
+      </div>
+      <div class="card-footer d-flex align-items-center gap-3">
+        <button type="button" class="btn btn-primary btn-sm save-section-btn" onclick="saveTelegram()">
+          <i class="bi bi-save me-1"></i>Telegram speichern
+        </button>
+        <span class="save-section-result small"></span>
+      </div>
+    </div>
+
+    <!-- ── Weitere Telegram-Empfänger ────────────────────────── -->
+    <div class="card mb-4" id="tg-recipients-card">
+      <div class="card-header d-flex align-items-center gap-2">
+        <i class="bi bi-people-fill text-info fs-5"></i>
+        <h6 class="mb-0">Weitere Telegram-Empfänger</h6>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary small mb-3">
+          Jeder Eintrag erhält dieselbe Benachrichtigung wie der Haupt-Bot oben.
+          Praktisch für Familienmitglieder mit eigenem Bot oder eigenem Chat.
+        </p>
+
+        <!-- Empfängerliste -->
+        <div id="recipients-list" class="mb-3"></div>
+
+        <!-- Neuen Empfänger anlegen -->
+        <div class="card border-secondary">
+          <div class="card-header py-2"><small class="fw-semibold"><i class="bi bi-plus-circle me-1"></i>Neuen Empfänger hinzufügen</small></div>
+          <div class="card-body py-2">
+            <div class="row g-2">
+              <div class="col-md-3">
+                <input type="text" id="new-name" class="form-control form-control-sm" placeholder="Name (z.B. Papa)">
+              </div>
+              <div class="col-md-4">
+                <input type="password" id="new-token" class="form-control form-control-sm" placeholder="Bot-Token">
+              </div>
+              <div class="col-md-3">
+                <div class="input-group input-group-sm">
+                  <input type="text" id="new-chat-id" class="form-control" placeholder="Chat-ID">
+                  <button class="btn btn-outline-secondary" type="button" onclick="fetchNewChatId()" title="Chat-ID ermitteln">
+                    <i class="bi bi-search"></i>
+                  </button>
+                </div>
+                <div id="new-fetch-result" class="small mt-1"></div>
+              </div>
+              <div class="col-md-2 d-flex align-items-start">
+                <button class="btn btn-primary btn-sm w-100" onclick="addRecipient()">
+                  <i class="bi bi-plus-circle me-1"></i>Hinzufügen
+                </button>
+              </div>
+            </div>
+            <div id="add-result" class="small mt-2"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── E-Mail ──────────────────────────────────────────────── -->
+    <div class="card mb-4" id="mail-card">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center gap-2">
+          <i class="bi bi-envelope-fill text-warning fs-5"></i>
+          <h6 class="mb-0">E-Mail-Benachrichtigung</h6>
+        </div>
+        <div class="form-check form-switch mb-0">
+          <input class="form-check-input" type="checkbox" name="email_enabled"
+                 value="true" id="mail-enabled"
+                 {% if cfg.email_enabled == 'true' %}checked{% endif %}
+                 onchange="toggleSection('mail-section', this.checked)">
+          <label class="form-check-label" for="mail-enabled">Aktiviert</label>
+        </div>
+      </div>
+      <div class="card-body" id="mail-section"
+           {% if cfg.email_enabled != 'true' %}style="opacity:0.5;pointer-events:none"{% endif %}>
+        <div class="alert alert-secondary small mb-3">
+          <strong><i class="bi bi-info-circle me-1"></i>SMTP-Einstellungen</strong><br>
+          Für Gmail: Host <code>smtp.gmail.com</code>, Port <code>465</code>, SSL aktiviert.
+          Nutze ein <a href="https://myaccount.google.com/apppasswords" target="_blank">App-Passwort</a> (nicht dein normales Google-Passwort).<br>
+          Für andere Anbieter: SMTP-Daten aus den Einstellungen deines E-Mail-Anbieters.
+        </div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">SMTP-Host <span class="text-danger">*</span></label>
+            <input type="text" name="email_smtp_host" class="form-control"
+                   value="{{ cfg.email_smtp_host }}" placeholder="smtp.gmail.com">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Port</label>
+            <input type="number" name="email_smtp_port" class="form-control"
+                   value="{{ cfg.email_smtp_port }}" placeholder="465">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Verschlüsselung</label>
+            <select name="email_use_ssl" class="form-select">
+              <option value="true" {% if cfg.email_use_ssl != 'false' %}selected{% endif %}>SSL/TLS (Port 465)</option>
+              <option value="false" {% if cfg.email_use_ssl == 'false' %}selected{% endif %}>STARTTLS (Port 587)</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">SMTP-Benutzername <span class="text-danger">*</span></label>
+            <input type="text" name="email_smtp_user" class="form-control"
+                   value="{{ cfg.email_smtp_user }}" placeholder="deine@email.de">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">SMTP-Passwort <span class="text-danger">*</span></label>
+            <input type="password" name="email_smtp_pass" class="form-control"
+                   value="{{ cfg.email_smtp_pass }}" placeholder="App-Passwort">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Von-Adresse</label>
+            <input type="text" name="email_from" class="form-control"
+                   value="{{ cfg.email_from }}" placeholder="AI-Caller &lt;deine@email.de&gt;">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">An-Adresse (Empfänger) <span class="text-danger">*</span></label>
+            <input type="text" name="email_to" class="form-control"
+                   value="{{ cfg.email_to }}" placeholder="empfaenger@email.de">
+          </div>
+        </div>
+        <div class="mt-3 d-flex align-items-center gap-2">
+          <button type="button" class="btn btn-sm btn-outline-warning" onclick="testEmail()" id="mail-test-btn">
+            <i class="bi bi-send me-1"></i>Test-Mail senden
+          </button>
+          <span id="mail-test-result" class="small"></span>
+        </div>
+      </div>
+      <div class="card-footer d-flex align-items-center gap-3">
+        <button type="button" class="btn btn-primary btn-sm save-section-btn" onclick="saveEmail()">
+          <i class="bi bi-save me-1"></i>E-Mail speichern
+        </button>
+        <span class="save-section-result small"></span>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleSection(id, enabled) {
+  const el = document.getElementById(id);
+  el.style.opacity = enabled ? '1' : '0.5';
+  el.style.pointerEvents = enabled ? '' : 'none';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function fetchChatId() {
+  const token = document.getElementById('tg-token').value.trim();
+  const resultEl = document.getElementById('tg-fetch-result');
+  const btn = document.getElementById('tg-fetch-btn');
+  if (!token) {
+    resultEl.innerHTML = '<span class="text-danger">Bitte zuerst den Bot-Token eingeben.</span>';
+    return;
+  }
+  btn.disabled = true;
+  resultEl.innerHTML = '<span class="spinner-border spinner-border-sm text-secondary me-1"></span>Suche…';
+  try {
+    const resp = await fetch('/api/telegram/get-chat-id', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token })
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      document.getElementById('tg-chat-id').value = data.chat_id;
+      resultEl.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>Chat-ID gefunden: <strong>${escHtml(data.chat_id)}</strong>${data.name ? ' (' + escHtml(data.name) + ')' : ''}</span>`;
+    } else {
+      resultEl.innerHTML = `<span class="text-danger"><i class="bi bi-x-circle me-1"></i>${escHtml(data.error)}</span>`;
+    }
+  } catch(e) {
+    resultEl.innerHTML = `<span class="text-danger">Fehler: ${escHtml(e.message)}</span>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function testTelegram() {
+  const token = document.getElementById('tg-token').value.trim();
+  const chat_id = document.getElementById('tg-chat-id').value.trim();
+  const resultEl = document.getElementById('tg-test-result');
+  const btn = document.getElementById('tg-test-btn');
+  if (!token || !chat_id) {
+    resultEl.innerHTML = '<span class="text-danger">Token und Chat-ID erforderlich.</span>';
+    return;
+  }
+  btn.disabled = true;
+  resultEl.innerHTML = '<span class="spinner-border spinner-border-sm text-secondary me-1"></span>Sende…';
+  try {
+    const resp = await fetch('/api/telegram/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, chat_id })
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>Testnachricht erfolgreich gesendet!</span>';
+    } else {
+      resultEl.innerHTML = `<span class="text-danger"><i class="bi bi-x-circle me-1"></i>${escHtml(data.error)}</span>`;
+    }
+  } catch(e) {
+    resultEl.innerHTML = `<span class="text-danger">Fehler: ${escHtml(e.message)}</span>`;
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { resultEl.innerHTML = ''; }, 5000);
+  }
+}
+
+async function saveTelegram() {
+  const card = document.getElementById('tg-card');
+  const resultEl = card.querySelector('.save-section-result');
+  const btn = card.querySelector('.save-section-btn');
+  const tgEnabled = document.getElementById('tg-enabled').checked;
+  const data = {
+    telegram_enabled: tgEnabled ? 'true' : 'false',
+    telegram_bot_token: document.getElementById('tg-token').value,
+    telegram_chat_id: document.getElementById('tg-chat-id').value,
+  };
+  btn.disabled = true;
+  resultEl.innerHTML = '<span class="spinner-border spinner-border-sm text-secondary me-1"></span>';
+  try {
+    const resp = await fetch('/api/config/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const result = await resp.json();
+    if (result.ok) {
+      resultEl.innerHTML = '<span class="text-success fw-semibold"><i class="bi bi-check-circle me-1"></i>Gespeichert.</span>';
+    } else {
+      resultEl.innerHTML = `<span class="text-danger fw-semibold"><i class="bi bi-x-circle me-1"></i>${escHtml(result.error)}</span>`;
+    }
+  } catch(e) {
+    resultEl.innerHTML = `<span class="text-danger fw-semibold">Fehler: ${escHtml(e.message)}</span>`;
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { resultEl.innerHTML = ''; }, 4000);
+  }
+}
+
+async function testEmail() {
+  const resultEl = document.getElementById('mail-test-result');
+  const btn = document.getElementById('mail-test-btn');
+  const card = document.getElementById('mail-card');
+  const data = {};
+  card.querySelectorAll('input, select').forEach(el => {
+    if (el.name) data[el.name] = el.type === 'checkbox' ? (el.checked ? 'true' : 'false') : el.value;
+  });
+  btn.disabled = true;
+  resultEl.innerHTML = '<span class="spinner-border spinner-border-sm text-secondary me-1"></span>Sende…';
+  try {
+    const resp = await fetch('/api/email/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const result = await resp.json();
+    if (result.ok) {
+      resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>Test-Mail erfolgreich gesendet!</span>';
+    } else {
+      resultEl.innerHTML = `<span class="text-danger"><i class="bi bi-x-circle me-1"></i>${escHtml(result.error)}</span>`;
+    }
+  } catch(e) {
+    resultEl.innerHTML = `<span class="text-danger">Fehler: ${escHtml(e.message)}</span>`;
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { resultEl.innerHTML = ''; }, 5000);
+  }
+}
+
+// ── Telegram recipients ──────────────────────────────────────────────────────
+
+async function loadRecipients() {
+  const list = document.getElementById('recipients-list');
+  try {
+    const resp = await fetch('/api/telegram/recipients');
+    const data = await resp.json();
+    if (!data.ok || !data.recipients.length) {
+      list.innerHTML = '<p class="text-secondary small mb-0">Noch keine weiteren Empfänger.</p>';
+      return;
+    }
+    list.innerHTML = data.recipients.map(r => `
+      <div class="d-flex align-items-center gap-2 mb-2 p-2 rounded border" id="recipient-${r.id}">
+        <i class="bi bi-person-circle text-info fs-5"></i>
+        <span class="fw-semibold flex-grow-1">${escHtml(r.name)}</span>
+        <span class="text-secondary small d-none d-md-inline">${escHtml(r.chat_id)}</span>
+        <button class="btn btn-sm btn-outline-info" onclick="testRecipient(${r.id})" title="Test senden">
+          <i class="bi bi-send"></i>
+        </button>
+        <button class="btn btn-sm btn-outline-danger" onclick="deleteRecipient(${r.id})" title="Löschen">
+          <i class="bi bi-trash"></i>
+        </button>
+        <span id="recipient-result-${r.id}" class="small"></span>
+      </div>`).join('');
+  } catch(e) {
+    list.innerHTML = `<span class="text-danger small">Fehler: ${escHtml(e.message)}</span>`;
+  }
+}
+
+async function addRecipient() {
+  const name = document.getElementById('new-name').value.trim();
+  const token = document.getElementById('new-token').value.trim();
+  const chatId = document.getElementById('new-chat-id').value.trim();
+  const resultEl = document.getElementById('add-result');
+  if (!name || !token || !chatId) {
+    resultEl.innerHTML = '<span class="text-danger">Name, Token und Chat-ID erforderlich.</span>';
+    return;
+  }
+  const resp = await fetch('/api/telegram/recipients', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name, bot_token: token, chat_id: chatId})
+  });
+  const data = await resp.json();
+  if (data.ok) {
+    document.getElementById('new-name').value = '';
+    document.getElementById('new-token').value = '';
+    document.getElementById('new-chat-id').value = '';
+    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>Hinzugefügt.</span>';
+    loadRecipients();
+    setTimeout(() => { resultEl.innerHTML = ''; }, 3000);
+  } else {
+    resultEl.innerHTML = `<span class="text-danger">${escHtml(data.error)}</span>`;
+  }
+}
+
+async function deleteRecipient(id) {
+  if (!confirm('Empfänger löschen?')) return;
+  const resp = await fetch(`/api/telegram/recipients/${id}`, {method: 'DELETE'});
+  const data = await resp.json();
+  if (data.ok) loadRecipients();
+}
+
+async function testRecipient(id) {
+  const resultEl = document.getElementById(`recipient-result-${id}`);
+  resultEl.innerHTML = '<span class="spinner-border spinner-border-sm text-secondary"></span>';
+  const resp = await fetch(`/api/telegram/recipients/${id}/test`, {method: 'POST'});
+  const data = await resp.json();
+  if (data.ok) {
+    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i></span>';
+  } else {
+    resultEl.innerHTML = `<span class="text-danger" title="${escHtml(data.error)}"><i class="bi bi-x-circle"></i></span>`;
+  }
+  setTimeout(() => { resultEl.innerHTML = ''; }, 4000);
+}
+
+async function fetchNewChatId() {
+  const token = document.getElementById('new-token').value.trim();
+  const resultEl = document.getElementById('new-fetch-result');
+  if (!token) { resultEl.innerHTML = '<span class="text-danger">Zuerst Token eingeben.</span>'; return; }
+  resultEl.innerHTML = '<span class="spinner-border spinner-border-sm text-secondary"></span>';
+  const resp = await fetch('/api/telegram/get-chat-id', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({token})
+  });
+  const data = await resp.json();
+  if (data.ok) {
+    document.getElementById('new-chat-id').value = data.chat_id;
+    resultEl.innerHTML = `<span class="text-success">Chat-ID: <strong>${escHtml(data.chat_id)}</strong>${data.name ? ' (' + escHtml(data.name) + ')' : ''}</span>`;
+  } else {
+    resultEl.innerHTML = `<span class="text-danger">${escHtml(data.error)}</span>`;
+  }
+  setTimeout(() => { resultEl.innerHTML = ''; }, 5000);
+}
+
+document.addEventListener('DOMContentLoaded', loadRecipients);
+
+async function saveEmail() {
+  const card = document.getElementById('mail-card');
+  const resultEl = card.querySelector('.save-section-result');
+  const btn = card.querySelector('.save-section-btn');
+  const data = {};
+  card.querySelectorAll('input, select').forEach(el => {
+    if (!el.name) return;
+    if (el.type === 'checkbox') { data[el.name] = el.checked ? 'true' : 'false'; return; }
+    data[el.name] = el.value;
+  });
+  btn.disabled = true;
+  resultEl.innerHTML = '<span class="spinner-border spinner-border-sm text-secondary me-1"></span>';
+  try {
+    const resp = await fetch('/api/config/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const result = await resp.json();
+    if (result.ok) {
+      resultEl.innerHTML = '<span class="text-success fw-semibold"><i class="bi bi-check-circle me-1"></i>Gespeichert.</span>';
+    } else {
+      resultEl.innerHTML = `<span class="text-danger fw-semibold"><i class="bi bi-x-circle me-1"></i>${escHtml(result.error)}</span>`;
+    }
+  } catch(e) {
+    resultEl.innerHTML = `<span class="text-danger fw-semibold">Fehler: ${escHtml(e.message)}</span>`;
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { resultEl.innerHTML = ''; }, 4000);
+  }
+}
+</script>
+{% endblock %}

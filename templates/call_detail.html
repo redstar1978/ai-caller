@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Anruf-Details – AI-Caller{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+  <a href="{{ url_for('calls') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Zurück
+  </a>
+</div>
+
+{% if call %}
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title text-secondary">Anruf-Info</h6>
+        <dl class="row mb-0">
+          <dt class="col-5">Nummer</dt><dd class="col-7">{{ call.caller_number or '–' }}</dd>
+          <dt class="col-5">Name</dt><dd class="col-7">{{ call.caller_name or '–' }}</dd>
+          <dt class="col-5">Zeitpunkt</dt><dd class="col-7">{{ (call.start_time or '')[:16].replace('T',' ') }}</dd>
+          <dt class="col-5">Dauer</dt><dd class="col-7">{{ call.duration or 0 }}s</dd>
+          <dt class="col-5">Status</dt><dd class="col-7">{{ call.status }}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+  {% if call.ai_summary %}
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title text-secondary"><i class="bi bi-robot me-1"></i>KI-Zusammenfassung</h6>
+        <p class="mb-0">{{ call.ai_summary }}</p>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% if msgs %}
+<div class="card">
+  <div class="card-header"><h6 class="mb-0">Gesprächsverlauf</h6></div>
+  <div class="card-body p-0">
+    <div class="conversation-log p-3">
+      {% for m in msgs %}
+      <div class="d-flex mb-3 {% if m.direction == 'ai' %}flex-row-reverse{% endif %}">
+        <div class="chat-bubble {% if m.direction == 'ai' %}chat-ai{% else %}chat-caller{% endif %}">
+          <small class="d-block text-secondary mb-1">
+            {% if m.direction == 'ai' %}<i class="bi bi-robot me-1"></i>KI
+            {% else %}<i class="bi bi-person me-1"></i>Anrufer{% endif %}
+          </small>
+          {{ m.content }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+{% else %}
+<div class="alert alert-warning">Anruf nicht gefunden.</div>
+{% endif %}
+{% endblock %}

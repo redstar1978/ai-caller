@@ -1,0 +1,14 @@
+flask>=2.3.0
+flask-socketio>=5.3.0
+pyVoIP>=1.6.9
+faster-whisper>=1.0.0
+openai>=1.0.0
+requests>=2.31.0
+python-telegram-bot>=20.7
+pydub>=0.25.1
+numpy>=1.24.0
+soundfile>=0.12.1
+python-dotenv>=1.0.0
+gunicorn>=21.2.0
+eventlet>=0.35.0
+piper-tts>=1.2.0

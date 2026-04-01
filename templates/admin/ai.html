@@ -1,0 +1,1437 @@
+{% extends "base.html" %}
+{% block title %}KI-Einstellungen – AI-Caller Admin{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-10">
+    <h4 class="mb-1"><i class="bi bi-cpu me-2 text-primary"></i>KI-Einstellungen</h4>
+    <p class="text-secondary mb-4">
+      Konfiguriere Spracherkennung (STT), Sprachausgabe (TTS) und das Sprachmodell (LLM).
+      Jede Komponente kann lokal (CPU, kein Cloud-Abo) oder über einen Cloud-Dienst betrieben werden.
+    </p>
+
+    {% if saved %}
+    <div class="alert alert-success alert-dismissible fade show">
+      <i class="bi bi-check-circle me-2"></i>Gespeichert.
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+
+    <form method="post" id="ai-form">
+
+      <!-- ── STT ─────────────────────────────────────────────────────── -->
+      <div class="card mb-4" id="stt-card">
+        <div class="card-header d-flex align-items-center gap-2">
+          <i class="bi bi-mic-fill text-primary"></i>
+          <h6 class="mb-0">Spracherkennung (STT – Speech-to-Text)</h6>
+        </div>
+        <div class="card-body">
+          <div class="row g-3 mb-3">
+            <div class="col-12">
+              <div class="btn-group w-100" role="group">
+                <input type="radio" class="btn-check" name="stt_mode" value="local"
+                       id="stt-local" {% if cfg.stt_mode != 'cloud' %}checked{% endif %}>
+                <label class="btn btn-outline-primary" for="stt-local">
+                  <i class="bi bi-pc-display me-1"></i>Lokal (CPU)
+                </label>
+                <input type="radio" class="btn-check" name="stt_mode" value="cloud"
+                       id="stt-cloud" {% if cfg.stt_mode == 'cloud' %}checked{% endif %}>
+                <label class="btn btn-outline-success" for="stt-cloud">
+                  <i class="bi bi-cloud me-1"></i>Cloud API
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div id="stt-local-cfg" class="{% if cfg.stt_mode == 'cloud' %}d-none{% endif %}">
+            <div class="alert alert-secondary small">
+              <strong><i class="bi bi-info-circle me-1"></i>Lokal: faster-whisper (OpenAI Whisper, CPU-optimiert)</strong><br>
+              Das Modell wird beim ersten Start automatisch heruntergeladen.
+              <ul class="mb-0 mt-1">
+                <li><code>tiny</code> – sehr schnell (~75 MB)</li>
+                <li><code>base</code> – gut ausgewogen (~150 MB, empfohlen)</li>
+                <li><code>small</code> – genauer (~500 MB)</li>
+                <li><code>medium</code> – sehr genau (~1,5 GB)</li>
+                <li><code>large-v3</code> – beste Qualität (~3 GB)</li>
+              </ul>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label">Whisper-Modell</label>
+                <select name="stt_local_model" class="form-select">
+                  {% for m in ['tiny','base','small','medium','large-v3'] %}
+                  <option value="{{ m }}" {% if cfg.stt_local_model == m %}selected{% endif %}>{{ m }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Sprache</label>
+                <select name="stt_language" id="stt-lang-local" class="form-select">
+                  {% set lang_opts = [('','Automatisch'),('de','Deutsch'),('en','Englisch'),('fr','Französisch'),('es','Spanisch'),('it','Italienisch'),('pt','Portugiesisch'),('nl','Niederländisch'),('pl','Polnisch'),('ru','Russisch'),('tr','Türkisch'),('ar','Arabisch'),('zh','Chinesisch'),('ja','Japanisch'),('ko','Koreanisch'),('sv','Schwedisch'),('da','Dänisch'),('fi','Finnisch'),('cs','Tschechisch'),('ro','Rumänisch')] %}
+                  {% for val, label in lang_opts %}
+                  <option value="{{ val }}" {% if cfg.stt_language == val %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+            <!-- STT local test -->
+            <div class="d-flex align-items-center gap-2 mt-3">
+              <button type="button" class="btn btn-sm btn-outline-primary" onclick="testSTT('local')">
+                <span id="stt-test-local-icon"><i class="bi bi-headset me-1"></i>Erkennung testen</span>
+                <span id="stt-test-local-spinner" class="d-none"><span class="spinner-border spinner-border-sm me-1"></span>Teste…</span>
+              </button>
+            </div>
+            <div id="stt-test-local-result" class="mt-2 d-none"></div>
+          </div>
+
+          <div id="stt-cloud-cfg" class="{% if cfg.stt_mode != 'cloud' %}d-none{% endif %}">
+            <div class="alert alert-secondary small">
+              <strong><i class="bi bi-info-circle me-1"></i>Cloud: OpenAI Whisper API (oder kompatibel)</strong><br>
+              Kompatibel mit OpenAI, <strong>Groq (kostenlos!)</strong>, Deepgram, AssemblyAI u.v.m.
+            </div>
+
+            <!-- Kostenlose Anbieter Presets -->
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Schnell-Auswahl (kostenlose Anbieter)</label>
+              <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-outline-success"
+                        onclick="sttPreset('https://api.groq.com/openai/v1','whisper-large-v3-turbo')">
+                  <i class="bi bi-lightning-fill me-1"></i>Groq – Whisper Turbo <span class="badge bg-success ms-1">Kostenlos</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-success"
+                        onclick="sttPreset('https://api.groq.com/openai/v1','whisper-large-v3')">
+                  <i class="bi bi-star-fill me-1"></i>Groq – Whisper Large v3 <span class="badge bg-success ms-1">Kostenlos</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-primary"
+                        onclick="sttPreset('https://api.openai.com/v1','whisper-1')">
+                  <i class="bi bi-cloud me-1"></i>OpenAI – Whisper-1
+                </button>
+              </div>
+              <small class="text-secondary d-block mt-1">
+                Groq: kostenlosen API-Key unter <code>console.groq.com</code> erstellen.
+              </small>
+            </div>
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">API-Key <span class="text-danger">*</span></label>
+                <input type="password" name="stt_cloud_api_key" id="stt-api-key" class="form-control"
+                       value="{{ cfg.stt_cloud_api_key }}" placeholder="gsk_… oder sk-…">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Basis-URL</label>
+                <input type="text" name="stt_cloud_base_url" id="stt-base-url" class="form-control"
+                       value="{{ cfg.stt_cloud_base_url }}"
+                       placeholder="https://api.groq.com/openai/v1">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Modell</label>
+                <input type="text" name="stt_cloud_model" id="stt-cloud-model" class="form-control"
+                       value="{{ cfg.stt_cloud_model }}"
+                       placeholder="whisper-large-v3-turbo">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Sprache</label>
+                <select name="stt_language" id="stt-lang-cloud" class="form-select">
+                  {% for val, label in lang_opts %}
+                  <option value="{{ val }}" {% if cfg.stt_language == val %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+            <!-- STT cloud test -->
+            <div class="d-flex align-items-center gap-2 mt-3">
+              <button type="button" class="btn btn-sm btn-outline-success" onclick="testSTT('cloud')">
+                <span id="stt-test-cloud-icon"><i class="bi bi-headset me-1"></i>Erkennung testen</span>
+                <span id="stt-test-cloud-spinner" class="d-none"><span class="spinner-border spinner-border-sm me-1"></span>Teste…</span>
+              </button>
+            </div>
+            <div id="stt-test-cloud-result" class="mt-2 d-none"></div>
+          </div>
+        </div>
+        <div class="card-footer d-flex align-items-center gap-3">
+          <button type="button" class="btn btn-primary save-section-btn" onclick="saveSection('stt-card')">
+            <i class="bi bi-save me-1"></i>STT speichern
+          </button>
+          <span class="save-section-result"></span>
+        </div>
+      </div>
+
+      <!-- ── TTS ─────────────────────────────────────────────────────── -->
+      <div class="card mb-4" id="tts-card">
+        <div class="card-header d-flex align-items-center gap-2">
+          <i class="bi bi-volume-up-fill text-success"></i>
+          <h6 class="mb-0">Sprachausgabe (TTS – Text-to-Speech)</h6>
+        </div>
+        <div class="card-body">
+
+          <!-- Modus-Auswahl -->
+          <div class="mb-4">
+            <div class="btn-group w-100 flex-wrap" role="group">
+              <input type="radio" class="btn-check" name="tts_mode" value="local"
+                     id="tts-local" {% if cfg.tts_mode not in ('edge','google','cloud','azure','elevenlabs') %}checked{% endif %}>
+              <label class="btn btn-outline-primary" for="tts-local">
+                <i class="bi bi-pc-display me-1"></i>Lokal (Piper)
+              </label>
+              <input type="radio" class="btn-check" name="tts_mode" value="edge"
+                     id="tts-edge" {% if cfg.tts_mode == 'edge' %}checked{% endif %}>
+              <label class="btn btn-outline-info" for="tts-edge">
+                <i class="bi bi-microsoft me-1"></i>Microsoft Edge <span class="badge bg-success ms-1">Kostenlos</span>
+              </label>
+              <input type="radio" class="btn-check" name="tts_mode" value="google"
+                     id="tts-google" {% if cfg.tts_mode == 'google' %}checked{% endif %}>
+              <label class="btn btn-outline-danger" for="tts-google">
+                <i class="bi bi-google me-1"></i>Google Cloud <span class="badge bg-success ms-1">4M/Monat</span>
+              </label>
+              <input type="radio" class="btn-check" name="tts_mode" value="cloud"
+                     id="tts-cloud" {% if cfg.tts_mode == 'cloud' %}checked{% endif %}>
+              <label class="btn btn-outline-success" for="tts-cloud">
+                <i class="bi bi-cloud me-1"></i>OpenAI / kompatibel
+              </label>
+              <input type="radio" class="btn-check" name="tts_mode" value="azure"
+                     id="tts-azure" {% if cfg.tts_mode == 'azure' %}checked{% endif %}>
+              <label class="btn btn-outline-primary" for="tts-azure">
+                <i class="bi bi-cloud-fill me-1"></i>Azure Speech
+              </label>
+              <input type="radio" class="btn-check" name="tts_mode" value="elevenlabs"
+                     id="tts-elevenlabs" {% if cfg.tts_mode == 'elevenlabs' %}checked{% endif %}>
+              <label class="btn btn-outline-warning" for="tts-elevenlabs">
+                <i class="bi bi-soundwave me-1"></i>ElevenLabs
+              </label>
+            </div>
+          </div>
+
+          <!-- ── Lokal Piper ── -->
+          <div id="tts-local-cfg" class="{% if cfg.tts_mode in ('edge','google','cloud','azure','elevenlabs') %}d-none{% endif %}">
+            <div class="alert alert-secondary small mb-3">
+              <strong><i class="bi bi-info-circle me-1"></i>Lokal: Piper TTS (sehr schnell auf CPU)</strong><br>
+              Wähle ein installiertes Modell oder lade ein neues herunter.
+              Ohne Modell wird <code>espeak-ng</code> als Fallback verwendet.
+            </div>
+
+            <!-- Installierte Modelle -->
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Installierte Modelle</label>
+              <div id="installed-models" class="d-flex flex-wrap gap-2 mb-2">
+                <span class="text-secondary small"><i class="spinner-border spinner-border-sm me-1"></i>Lade…</span>
+              </div>
+              <input type="hidden" name="tts_local_model_path" id="tts-model-path"
+                     value="{{ cfg.tts_local_model_path }}">
+              <input type="hidden" name="tts_local_config_path" id="tts-config-path"
+                     value="{{ cfg.tts_local_config_path }}">
+              <small class="text-secondary">Aktuell: <code id="current-model-display">{{ cfg.tts_local_model_path or 'keins' }}</code></small>
+            </div>
+
+            <!-- Modelle herunterladen -->
+            <div class="mb-4">
+              <label class="form-label fw-semibold">Modell herunterladen</label>
+              <div class="row g-2 mb-2">
+                <div class="col-md-3">
+                  <select id="dl-lang-filter" class="form-select form-select-sm" onchange="filterVoices()">
+                    <option value="">Alle Sprachen</option>
+                    <option value="de">Deutsch</option>
+                    <option value="en">Englisch</option>
+                    <option value="fr">Französisch</option>
+                    <option value="es">Spanisch</option>
+                    <option value="it">Italienisch</option>
+                  </select>
+                </div>
+              </div>
+              <div id="voice-list" class="d-flex flex-wrap gap-2"></div>
+              <div id="dl-progress" class="mt-2 d-none">
+                <div class="d-flex align-items-center gap-2">
+                  <div class="spinner-border spinner-border-sm text-primary"></div>
+                  <span id="dl-status">Wird heruntergeladen…</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Piper Parameter -->
+            <div class="row g-3 mb-3">
+              <div class="col-md-4">
+                <label class="form-label">Geschwindigkeit <small class="text-secondary">(0.5–2.0)</small></label>
+                <input type="number" name="tts_local_length_scale" class="form-control"
+                       min="0.5" max="2.0" step="0.05"
+                       value="{{ cfg.tts_local_length_scale or '1.0' }}">
+                <small class="text-secondary">1.0 = normal, &lt;1.0 = schneller, &gt;1.0 = langsamer</small>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Rauschen <small class="text-secondary">(0.0–1.5)</small></label>
+                <input type="number" name="tts_local_noise_scale" class="form-control"
+                       min="0.0" max="1.5" step="0.05"
+                       value="{{ cfg.tts_local_noise_scale or '0.667' }}">
+                <small class="text-secondary">Variabilität der Aussprache (Standard 0.667)</small>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Rausch-Breite <small class="text-secondary">(0.0–2.0)</small></label>
+                <input type="number" name="tts_local_noise_w" class="form-control"
+                       min="0.0" max="2.0" step="0.1"
+                       value="{{ cfg.tts_local_noise_w or '0.8' }}">
+                <small class="text-secondary">Aussprache-Varianz (Standard 0.8)</small>
+              </div>
+            </div>
+
+            <!-- Preview lokal -->
+            <div class="d-flex align-items-center gap-2 mt-2">
+              <button type="button" class="btn btn-sm btn-outline-primary" onclick="previewTTS('local')">
+                <i class="bi bi-play-circle me-1"></i>Vorlesen (Vorschau)
+              </button>
+              <audio id="tts-preview-audio" controls class="d-none" style="height:32px"></audio>
+            </div>
+          </div>
+
+          <!-- ── Microsoft Edge TTS (kostenlos) ── -->
+          <div id="tts-edge-cfg" class="{% if cfg.tts_mode != 'edge' %}d-none{% endif %}">
+            <div class="alert alert-info small mb-3">
+              <strong><i class="bi bi-microsoft me-1"></i>Microsoft Edge TTS – komplett kostenlos, kein API-Key nötig</strong><br>
+              Verwendet dieselben hochqualitativen Neural-Stimmen wie der Microsoft Edge-Browser.
+              Keine Registrierung, keine Limits – direkt verwendbar.
+              <div class="mt-2">
+                <strong>Verfügbare deutsche Stimmen:</strong>
+                <ul class="mb-0 mt-1 small">
+                  <li><code>de-DE-KatjaNeural</code> – Katja, weiblich (Standard-DE)</li>
+                  <li><code>de-DE-ConradNeural</code> – Conrad, männlich (DE)</li>
+                  <li><code>de-DE-AmalaNeural</code> – Amala, weiblich (DE)</li>
+                  <li><code>de-DE-KillianNeural</code> – Killian, männlich (DE)</li>
+                  <li><code>de-DE-FlorianMultilingualNeural</code> – Florian, mehrsprachig (DE)</li>
+                  <li><code>de-DE-SeraphinaMultilingualNeural</code> – Seraphina, mehrsprachig (DE)</li>
+                  <li><code>de-AT-IngridNeural</code> – Ingrid, weiblich (Österreich)</li>
+                  <li><code>de-AT-JonasNeural</code> – Jonas, männlich (Österreich)</li>
+                  <li><code>de-CH-LeniNeural</code> – Leni, weiblich (Schweiz)</li>
+                  <li><code>de-CH-JanNeural</code> – Jan, männlich (Schweiz)</li>
+                </ul>
+              </div>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">Stimme</label>
+                <select name="tts_edge_voice" class="form-select">
+                  {% set edge_voices = [
+                    ('de-DE-KatjaNeural',                  'Katja ♀ (DE, Standard)'),
+                    ('de-DE-ConradNeural',                 'Conrad ♂ (DE)'),
+                    ('de-DE-AmalaNeural',                  'Amala ♀ (DE)'),
+                    ('de-DE-KillianNeural',                'Killian ♂ (DE)'),
+                    ('de-DE-FlorianMultilingualNeural',    'Florian ♂ (DE, mehrsprachig)'),
+                    ('de-DE-SeraphinaMultilingualNeural',  'Seraphina ♀ (DE, mehrsprachig)'),
+                    ('de-AT-IngridNeural',                 'Ingrid ♀ (Österreich)'),
+                    ('de-AT-JonasNeural',                  'Jonas ♂ (Österreich)'),
+                    ('de-CH-LeniNeural',                   'Leni ♀ (Schweiz)'),
+                    ('de-CH-JanNeural',                    'Jan ♂ (Schweiz)'),
+                    ('en-US-JennyNeural',                  'Jenny ♀ (EN-US)'),
+                    ('en-US-GuyNeural',                    'Guy ♂ (EN-US)'),
+                    ('en-GB-SoniaNeural',                  'Sonia ♀ (EN-GB)'),
+                    ('fr-FR-DeniseNeural',                 'Denise ♀ (FR)'),
+                    ('es-ES-ElviraNeural',                 'Elvira ♀ (ES)'),
+                    ('it-IT-ElsaNeural',                   'Elsa ♀ (IT)'),
+                  ] %}
+                  {% for val, label in edge_voices %}
+                  <option value="{{ val }}" {% if cfg.tts_edge_voice == val %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+                <small class="text-secondary">Komplette Liste: <code>edge-tts --list-voices</code></small>
+              </div>
+            </div>
+            <div class="mt-3">
+              <button type="button" class="btn btn-sm btn-outline-info" onclick="previewTTS('edge')">
+                <i class="bi bi-play-circle me-1"></i>Vorlesen (Vorschau)
+              </button>
+              <audio id="tts-preview-audio-edge" controls class="d-none ms-2" style="height:32px"></audio>
+            </div>
+          </div>
+
+          <!-- ── Google Cloud TTS ── -->
+          <div id="tts-google-cfg" class="{% if cfg.tts_mode != 'google' %}d-none{% endif %}">
+            <div class="alert alert-secondary small mb-3">
+              <strong><i class="bi bi-google me-1"></i>Google Cloud Text-to-Speech</strong><br>
+              <span class="badge bg-success me-1">Kostenlos</span>
+              <strong>4 Mio. Standard-Zeichen/Monat</strong> oder <strong>1 Mio. WaveNet/Neural2-Zeichen/Monat</strong> (dauerhaft).<br>
+              <strong>Anleitung zum API-Key:</strong>
+              <ol class="mb-0 mt-1">
+                <li>Gehe zu <code>console.cloud.google.com</code> und erstelle ein Konto (Kreditkarte nötig)</li>
+                <li>Neues Projekt erstellen → <em>APIs &amp; Dienste</em> → <em>Bibliothek</em></li>
+                <li>Suche nach <strong>„Cloud Text-to-Speech API"</strong> → aktivieren</li>
+                <li><em>Abrechnung</em> aktivieren (für Free Tier keine Kosten bei Einhaltung der Limits)</li>
+                <li><em>APIs &amp; Dienste</em> → <em>Anmeldedaten</em> → <em>Anmeldedaten erstellen</em> → <strong>API-Schlüssel</strong></li>
+                <li>Key kopieren und hier einfügen</li>
+              </ol>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-5">
+                <label class="form-label">API-Key <span class="text-danger">*</span></label>
+                <input type="password" name="tts_google_api_key" class="form-control"
+                       value="{{ cfg.tts_google_api_key }}" placeholder="AIza…">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Sprach-Code</label>
+                <select name="tts_google_language_code" id="google-lang" class="form-select" onchange="updateGoogleVoices()">
+                  {% for lc in ['de-DE','de-AT','de-CH','en-US','en-GB','fr-FR','es-ES','it-IT'] %}
+                  <option value="{{ lc }}" {% if cfg.tts_google_language_code == lc %}selected{% endif %}>{{ lc }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Stimme</label>
+                <select name="tts_google_voice" id="google-voice" class="form-select">
+                  {% set google_voices_de = [
+                    ('de-DE-Neural2-A', 'Neural2-A ♀ (DE, hoch)'),
+                    ('de-DE-Neural2-B', 'Neural2-B ♂ (DE, hoch)'),
+                    ('de-DE-Neural2-C', 'Neural2-C ♀ (DE, hoch)'),
+                    ('de-DE-Neural2-D', 'Neural2-D ♂ (DE, hoch)'),
+                    ('de-DE-Neural2-F', 'Neural2-F ♀ (DE, hoch)'),
+                    ('de-DE-Wavenet-A', 'WaveNet-A ♀ (DE)'),
+                    ('de-DE-Wavenet-B', 'WaveNet-B ♂ (DE)'),
+                    ('de-DE-Wavenet-C', 'WaveNet-C ♀ (DE)'),
+                    ('de-DE-Wavenet-D', 'WaveNet-D ♂ (DE)'),
+                    ('de-DE-Wavenet-E', 'WaveNet-E ♂ (DE)'),
+                    ('de-DE-Wavenet-F', 'WaveNet-F ♀ (DE)'),
+                    ('de-DE-Standard-A', 'Standard-A ♀ (DE, kostenlos 4M/Mo)'),
+                    ('de-DE-Standard-B', 'Standard-B ♂ (DE, kostenlos 4M/Mo)'),
+                    ('de-DE-Standard-C', 'Standard-C ♀ (DE, kostenlos 4M/Mo)'),
+                    ('de-DE-Standard-D', 'Standard-D ♂ (DE, kostenlos 4M/Mo)'),
+                    ('de-DE-Standard-E', 'Standard-E ♂ (DE, kostenlos 4M/Mo)'),
+                    ('de-DE-Standard-F', 'Standard-F ♀ (DE, kostenlos 4M/Mo)'),
+                    ('de-DE-Polyglot-1', 'Polyglot-1 ♂ (DE, mehrsprachig)'),
+                  ] %}
+                  {% for val, label in google_voices_de %}
+                  <option value="{{ val }}" {% if cfg.tts_google_voice == val %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+                <small class="text-secondary">Neural2/WaveNet: 1 Mio. Zeichen/Mo kostenlos</small>
+              </div>
+            </div>
+            <div class="mt-3">
+              <button type="button" class="btn btn-sm btn-outline-danger" onclick="previewTTS('google')">
+                <i class="bi bi-play-circle me-1"></i>Vorlesen (Vorschau)
+              </button>
+              <audio id="tts-preview-audio-google" controls class="d-none ms-2" style="height:32px"></audio>
+            </div>
+          </div>
+
+          <!-- ── Cloud OpenAI ── -->
+          <div id="tts-cloud-cfg" class="{% if cfg.tts_mode != 'cloud' %}d-none{% endif %}">
+            <div class="alert alert-secondary small mb-3">
+              <strong><i class="bi bi-cloud me-1"></i>Cloud: OpenAI TTS API (oder kompatibel)</strong><br>
+              Kompatibel mit OpenAI, LocalAI und anderen OpenAI-kompatiblen Diensten.<br>
+              <strong>Anleitung OpenAI API-Key:</strong>
+              <ol class="mb-0 mt-1">
+                <li>Konto erstellen auf <code>platform.openai.com</code></li>
+                <li><em>API Keys</em> → <em>Create new secret key</em></li>
+                <li>Key kopieren (beginnt mit <code>sk-…</code>) – wird nur einmal angezeigt!</li>
+                <li>Guthaben aufladen unter <em>Billing</em> (kein kostenloses Kontingent für TTS)</li>
+              </ol>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">API-Key <span class="text-danger">*</span></label>
+                <input type="password" name="tts_cloud_api_key" class="form-control"
+                       value="{{ cfg.tts_cloud_api_key }}" placeholder="sk-…">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Basis-URL (leer = OpenAI)</label>
+                <input type="text" name="tts_cloud_base_url" class="form-control"
+                       value="{{ cfg.tts_cloud_base_url }}" placeholder="https://api.openai.com/v1">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Modell</label>
+                <select name="tts_cloud_model" class="form-select">
+                  {% for m, label in [('tts-1','tts-1 (schnell)'),('tts-1-hd','tts-1-hd (Qualität)'),('gpt-4o-mini-tts','gpt-4o-mini-tts (neu)')] %}
+                  <option value="{{ m }}" {% if cfg.tts_cloud_model == m %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Stimme</label>
+                <select name="tts_cloud_voice" class="form-select">
+                  {% for v in ['alloy','ash','ballad','coral','echo','fable','onyx','nova','sage','shimmer'] %}
+                  <option value="{{ v }}" {% if cfg.tts_cloud_voice == v %}selected{% endif %}>{{ v }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Geschwindigkeit <small class="text-secondary">(0.25–4.0)</small></label>
+                <input type="number" name="tts_cloud_speed" class="form-control"
+                       min="0.25" max="4.0" step="0.05"
+                       value="{{ cfg.tts_cloud_speed or '1.0' }}">
+              </div>
+            </div>
+            <div class="mt-3">
+              <button type="button" class="btn btn-sm btn-outline-success" onclick="previewTTS('cloud')">
+                <i class="bi bi-play-circle me-1"></i>Vorlesen (Vorschau)
+              </button>
+              <audio id="tts-preview-audio-cloud" controls class="d-none ms-2" style="height:32px"></audio>
+            </div>
+          </div>
+
+          <!-- ── Azure Speech Service ── -->
+          <div id="tts-azure-cfg" class="{% if cfg.tts_mode != 'azure' %}d-none{% endif %}">
+            <div class="alert alert-secondary small mb-3">
+              <strong><i class="bi bi-cloud-fill me-1"></i>Microsoft Azure Speech Service</strong><br>
+              <span class="badge bg-success me-1">Kostenlos</span> <strong>500.000 Zeichen/Monat</strong> im Free-Tier (F0).<br>
+              <strong>Anleitung zum API-Key:</strong>
+              <ol class="mb-0 mt-1">
+                <li>Gehe zu <code>portal.azure.com</code> und erstelle ein kostenloses Konto</li>
+                <li>Klicke auf <em>Ressource erstellen</em> → suche nach <strong>„Speech"</strong></li>
+                <li>Wähle Preisstufe <strong>Free F0</strong> und eine Region (z.B. <code>westeurope</code>)</li>
+                <li>Nach Erstellung: <em>Schlüssel und Endpunkt</em> → Key 1 kopieren</li>
+              </ol>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-5">
+                <label class="form-label">API-Key <span class="text-danger">*</span></label>
+                <input type="password" name="tts_azure_api_key" class="form-control"
+                       value="{{ cfg.tts_azure_api_key }}" placeholder="Subscription Key aus portal.azure.com">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Region</label>
+                <select name="tts_azure_region" class="form-select">
+                  {% for r in ['westeurope','northeurope','germanywestcentral','eastus','westus','eastus2','southeastasia'] %}
+                  <option value="{{ r }}" {% if cfg.tts_azure_region == r %}selected{% endif %}>{{ r }}</option>
+                  {% endfor %}
+                </select>
+                <small class="text-secondary">Muss zur Ressource passen</small>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Stimme</label>
+                <select name="tts_azure_voice" class="form-select">
+                  {% set azure_voices = [
+                    ('de-DE-KatjaNeural',       'Katja ♀ (DE, Standard)'),
+                    ('de-DE-ConradNeural',      'Conrad ♂ (DE)'),
+                    ('de-DE-AmalaNeural',       'Amala ♀ (DE)'),
+                    ('de-DE-BerndNeural',       'Bernd ♂ (DE)'),
+                    ('de-DE-ChristophNeural',    'Christoph ♂ (DE)'),
+                    ('de-DE-ElkeNeural',        'Elke ♀ (DE)'),
+                    ('de-DE-GiselaNeural',      'Gisela ♀ (DE, Kind)'),
+                    ('de-DE-KasperNeural',      'Kasper ♂ (DE)'),
+                    ('de-DE-KillianNeural',     'Killian ♂ (DE)'),
+                    ('de-DE-KlarissaNeural',    'Klarissa ♀ (DE)'),
+                    ('de-DE-KlausNeural',       'Klaus ♂ (DE)'),
+                    ('de-DE-LouisaNeural',      'Louisa ♀ (DE)'),
+                    ('de-DE-MajaNeural',        'Maja ♀ (DE)'),
+                    ('de-DE-RalfNeural',        'Ralf ♂ (DE)'),
+                    ('de-DE-TanjaNeural',       'Tanja ♀ (DE)'),
+                    ('de-AT-IngridNeural',      'Ingrid ♀ (Österreich)'),
+                    ('de-AT-JonasNeural',       'Jonas ♂ (Österreich)'),
+                    ('de-CH-JanNeural',         'Jan ♂ (Schweiz)'),
+                    ('de-CH-LeniNeural',        'Leni ♀ (Schweiz)'),
+                    ('en-US-JennyNeural',       'Jenny ♀ (EN-US)'),
+                    ('en-US-GuyNeural',         'Guy ♂ (EN-US)'),
+                    ('en-GB-SoniaNeural',       'Sonia ♀ (EN-GB)'),
+                  ] %}
+                  {% for val, label in azure_voices %}
+                  <option value="{{ val }}" {% if cfg.tts_azure_voice == val %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+            <div class="mt-3">
+              <button type="button" class="btn btn-sm btn-outline-primary" onclick="previewTTS('azure')">
+                <i class="bi bi-play-circle me-1"></i>Vorlesen (Vorschau)
+              </button>
+              <audio id="tts-preview-audio-azure" controls class="d-none ms-2" style="height:32px"></audio>
+            </div>
+          </div>
+
+          <!-- ── ElevenLabs ── -->
+          <div id="tts-elevenlabs-cfg" class="{% if cfg.tts_mode != 'elevenlabs' %}d-none{% endif %}">
+            <div class="alert alert-secondary small mb-3">
+              <strong><i class="bi bi-soundwave me-1"></i>ElevenLabs – hochwertige KI-Stimmen</strong><br>
+              <span class="badge bg-success me-1">Kostenlos</span> <strong>10.000 Zeichen/Monat</strong> im Free-Tier.<br>
+              <strong>Anleitung zum API-Key:</strong>
+              <ol class="mb-0 mt-1">
+                <li>Konto erstellen auf <code>elevenlabs.io</code></li>
+                <li>Oben rechts auf das Profilbild → <em>Profile + API key</em></li>
+                <li>API Key kopieren (beginnt mit <code>sk_…</code>)</li>
+                <li>Voice-ID: Gehe zu <em>Voice Library</em> → Stimme auswählen → ID aus der URL kopieren</li>
+              </ol>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">API-Key <span class="text-danger">*</span></label>
+                <input type="password" name="tts_elevenlabs_api_key" class="form-control"
+                       value="{{ cfg.tts_elevenlabs_api_key }}" placeholder="sk_…">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Voice-ID <span class="text-danger">*</span></label>
+                <input type="text" name="tts_elevenlabs_voice_id" class="form-control font-monospace"
+                       value="{{ cfg.tts_elevenlabs_voice_id or '21m00Tcm4TlvDq8ikWAM' }}"
+                       placeholder="21m00Tcm4TlvDq8ikWAM">
+                <small class="text-secondary">Rachel (EN) = 21m00Tcm4TlvDq8ikWAM (Beispiel)</small>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Modell</label>
+                <select name="tts_elevenlabs_model_id" class="form-select">
+                  {% for mid, mlabel in [
+                    ('eleven_multilingual_v2','Multilingual v2 (empfohlen)'),
+                    ('eleven_turbo_v2_5','Turbo v2.5 (schnell)'),
+                    ('eleven_flash_v2_5','Flash v2.5 (sehr schnell)'),
+                    ('eleven_monolingual_v1','Monolingual v1 (EN)'),
+                  ] %}
+                  <option value="{{ mid }}" {% if cfg.tts_elevenlabs_model_id == mid %}selected{% endif %}>{{ mlabel }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Stabilität <small class="text-secondary">(0–1)</small></label>
+                <input type="number" name="tts_elevenlabs_stability" class="form-control"
+                       min="0" max="1" step="0.05"
+                       value="{{ cfg.tts_elevenlabs_stability or '0.5' }}">
+                <small class="text-secondary">Höher = stabiler, weniger expressiv</small>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Ähnlichkeit <small class="text-secondary">(0–1)</small></label>
+                <input type="number" name="tts_elevenlabs_similarity" class="form-control"
+                       min="0" max="1" step="0.05"
+                       value="{{ cfg.tts_elevenlabs_similarity or '0.75' }}">
+                <small class="text-secondary">Höher = ähnlicher zur Original-Stimme</small>
+              </div>
+            </div>
+            <div class="mt-3">
+              <button type="button" class="btn btn-sm btn-outline-warning" onclick="previewTTS('elevenlabs')">
+                <i class="bi bi-play-circle me-1"></i>Vorlesen (Vorschau)
+              </button>
+              <audio id="tts-preview-audio-elevenlabs" controls class="d-none ms-2" style="height:32px"></audio>
+            </div>
+          </div>
+
+        </div>
+        <div class="card-footer d-flex align-items-center gap-3">
+          <button type="button" class="btn btn-success save-section-btn" onclick="saveSection('tts-card')">
+            <i class="bi bi-save me-1"></i>TTS speichern
+          </button>
+          <span class="save-section-result"></span>
+        </div>
+      </div>
+
+      <!-- ── LLM ─────────────────────────────────────────────────────── -->
+      <div class="card mb-4" id="llm-card">
+        <div class="card-header d-flex align-items-center gap-2">
+          <i class="bi bi-lightbulb-fill text-warning"></i>
+          <h6 class="mb-0">Sprachmodell (LLM – Large Language Model)</h6>
+        </div>
+        <div class="card-body">
+          <div class="row g-3 mb-3">
+            <div class="col-12">
+              <div class="btn-group w-100" role="group">
+                <input type="radio" class="btn-check" name="llm_mode" value="local"
+                       id="llm-local" {% if cfg.llm_mode != 'cloud' %}checked{% endif %}>
+                <label class="btn btn-outline-primary" for="llm-local">
+                  <i class="bi bi-pc-display me-1"></i>Lokal via Ollama
+                </label>
+                <input type="radio" class="btn-check" name="llm_mode" value="cloud"
+                       id="llm-cloud" {% if cfg.llm_mode == 'cloud' %}checked{% endif %}>
+                <label class="btn btn-outline-success" for="llm-cloud">
+                  <i class="bi bi-cloud me-1"></i>Cloud API
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Local Ollama ── -->
+          <div id="llm-local-cfg">
+            <div class="alert alert-secondary small">
+              <strong><i class="bi bi-info-circle me-1"></i>Lokal: Ollama (vorhandener Server)</strong><br>
+              Ollama muss separat installiert und gestartet sein: <code>https://ollama.com</code><br>
+              Modelle installieren z.B. mit: <code>ollama pull llama3</code> oder <code>ollama pull mistral</code><br>
+              Läuft Ollama auf diesem Server: Standard-URL <code>http://localhost:11434</code> verwenden.
+              Läuft Ollama auf einem anderen Rechner im Netzwerk: Netzwerk-Suche verwenden.
+            </div>
+
+            <div class="row g-3 mb-3">
+              <!-- URL + Scan -->
+              <div class="col-md-7">
+                <label class="form-label">Ollama URL <span class="text-danger">*</span></label>
+                <div class="input-group">
+                  <input type="text" name="llm_local_url" id="llm-url" class="form-control"
+                         value="{{ cfg.llm_local_url }}" placeholder="http://localhost:11434">
+                  <button type="button" class="btn btn-outline-secondary" id="btn-scan"
+                          onclick="scanOllama()" title="Netzwerk nach Ollama-Servern durchsuchen">
+                    <span id="scan-icon"><i class="bi bi-radar me-1"></i>Netzwerk scannen</span>
+                    <span id="scan-spinner" class="d-none">
+                      <span class="spinner-border spinner-border-sm me-1"></span>Suche läuft…
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Model + dropdown from scan -->
+              <div class="col-md-5">
+                <label class="form-label">Modell <span class="text-danger">*</span></label>
+                <div class="input-group">
+                  <input type="text" name="llm_local_model" id="llm-model" class="form-control"
+                         value="{{ cfg.llm_local_model }}" placeholder="llama3">
+                  <button type="button" class="btn btn-outline-secondary dropdown-toggle"
+                          id="btn-model-dropdown" data-bs-toggle="dropdown"
+                          title="Installierte Modelle anzeigen" disabled>
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end" id="model-dropdown">
+                    <li><span class="dropdown-item-text text-secondary small">Erst Netzwerk scannen oder Verbindung testen</span></li>
+                  </ul>
+                </div>
+                <small class="text-secondary">Muss in Ollama installiert sein.</small>
+              </div>
+            </div>
+
+            <!-- Scan results -->
+            <div id="scan-results" class="d-none mb-3">
+              <h6 class="small text-secondary mb-2"><i class="bi bi-list-ul me-1"></i>Gefundene Ollama-Server:</h6>
+              <div id="scan-results-list" class="d-flex flex-wrap gap-2"></div>
+            </div>
+            <div id="scan-empty" class="d-none alert alert-warning small py-2">
+              <i class="bi bi-exclamation-triangle me-1"></i>
+              Kein Ollama-Server im Netzwerk gefunden. Ist Ollama gestartet?
+              Überprüfe ob der Dienst läuft: <code>systemctl status ollama</code>
+            </div>
+
+            <!-- Connection test -->
+            <div class="d-flex gap-2 align-items-center mt-2">
+              <button type="button" class="btn btn-sm btn-outline-warning" onclick="testOllamaConnection()">
+                <span id="test-icon"><i class="bi bi-plug me-1"></i>Verbindung testen</span>
+                <span id="test-spinner" class="d-none">
+                  <span class="spinner-border spinner-border-sm me-1"></span>Teste…
+                </span>
+              </button>
+            </div>
+
+            <!-- Test result -->
+            <div id="llm-test-result" class="mt-3 d-none"></div>
+          </div>
+
+          <!-- ── Cloud LLM ── -->
+          <div id="llm-cloud-cfg" class="{% if cfg.llm_mode != 'cloud' %}d-none{% endif %}">
+
+            <!-- Provider grid -->
+            <div class="mb-3">
+              <label class="form-label fw-semibold small text-secondary">Anbieter wählen</label>
+              <div class="row g-2" id="llm-provider-grid">
+                <!-- filled by JS -->
+              </div>
+            </div>
+
+            <!-- Dynamic instructions -->
+            <div id="llm-provider-info" class="alert alert-secondary small d-none mb-3"></div>
+
+            <!-- Fields -->
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">API-Key <span class="text-danger">*</span></label>
+                <input type="password" name="llm_cloud_api_key" id="llm-cloud-key" class="form-control"
+                       value="{{ cfg.llm_cloud_api_key }}" placeholder="sk-…" autocomplete="off">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Basis-URL</label>
+                <input type="text" name="llm_cloud_base_url" id="llm-cloud-url" class="form-control"
+                       value="{{ cfg.llm_cloud_base_url }}" placeholder="https://api.openai.com/v1">
+              </div>
+              <div class="col-md-8">
+                <label class="form-label">Modell</label>
+                <div class="input-group">
+                  <input type="text" name="llm_cloud_model" id="llm-cloud-model" class="form-control"
+                         value="{{ cfg.llm_cloud_model }}" placeholder="gpt-4o-mini">
+                  <button type="button" class="btn btn-outline-secondary dropdown-toggle"
+                          id="llm-model-dd-btn" data-bs-toggle="dropdown" title="Modelle anzeigen">
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark" id="llm-model-dd"></ul>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-3">
+              <button type="button" class="btn btn-sm btn-outline-warning" onclick="testCloudConnection()">
+                <span id="cloud-test-icon"><i class="bi bi-plug me-1"></i>Verbindung testen</span>
+                <span id="cloud-test-spinner" class="d-none">
+                  <span class="spinner-border spinner-border-sm me-1"></span>Teste…
+                </span>
+              </button>
+            </div>
+            <div id="llm-cloud-test-result" class="mt-3 d-none"></div>
+          </div>
+        </div>
+        <div class="card-footer d-flex align-items-center gap-3">
+          <button type="button" class="btn btn-warning save-section-btn" onclick="saveSection('llm-card')">
+            <i class="bi bi-save me-1"></i>LLM speichern
+          </button>
+          <span class="save-section-result"></span>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── 2-way toggle (local ↔ cloud) ──────────────────────────────────────────────
+function bindToggle(radioName, localId, cloudId) {
+  document.querySelectorAll(`input[name="${radioName}"]`).forEach(r => {
+    r.addEventListener('change', () => {
+      const isCloud = document.querySelector(`input[name="${radioName}"]:checked`).value === 'cloud';
+      document.getElementById(localId).classList.toggle('d-none', isCloud);
+      document.getElementById(cloudId).classList.toggle('d-none', !isCloud);
+    });
+  });
+}
+bindToggle('stt_mode', 'stt-local-cfg', 'stt-cloud-cfg');
+
+// LLM toggle – also initialise provider grid when switching to cloud
+document.querySelectorAll('input[name="llm_mode"]').forEach(r => {
+  r.addEventListener('change', () => {
+    const isCloud = document.querySelector('input[name="llm_mode"]:checked').value === 'cloud';
+    document.getElementById('llm-local-cfg').classList.toggle('d-none', isCloud);
+    document.getElementById('llm-cloud-cfg').classList.toggle('d-none', !isCloud);
+    if (isCloud) initProviderGrid();
+  });
+});
+
+// ── 6-way TTS toggle ─────────────────────────────────────────────────────────
+function applyTtsToggle() {
+  const val = document.querySelector('input[name="tts_mode"]:checked').value;
+  ['local','edge','google','cloud','azure','elevenlabs'].forEach(m => {
+    document.getElementById(`tts-${m}-cfg`).classList.toggle('d-none', val !== m);
+  });
+  if (val === 'local') loadInstalledModels();
+}
+document.querySelectorAll('input[name="tts_mode"]').forEach(r => r.addEventListener('change', applyTtsToggle));
+
+// ── STT preset buttons ────────────────────────────────────────────────────────
+function sttPreset(url, model) {
+  document.getElementById('stt-base-url').value = url;
+  document.getElementById('stt-cloud-model').value = model;
+}
+
+// ── TTS Preview ───────────────────────────────────────────────────────────────
+async function previewTTS(mode) {
+  const audioIds = {
+    local: 'tts-preview-audio', edge: 'tts-preview-audio-edge',
+    google: 'tts-preview-audio-google', cloud: 'tts-preview-audio-cloud',
+    azure: 'tts-preview-audio-azure', elevenlabs: 'tts-preview-audio-elevenlabs'
+  };
+  const audio = document.getElementById(audioIds[mode]);
+  let payload = { tts_mode: mode };
+
+  if (mode === 'local') {
+    payload.tts_local_model_path  = document.getElementById('tts-model-path').value;
+    payload.tts_local_config_path = document.getElementById('tts-config-path').value;
+    payload.tts_local_length_scale = document.querySelector('[name=tts_local_length_scale]').value;
+    payload.tts_local_noise_scale  = document.querySelector('[name=tts_local_noise_scale]').value;
+    payload.tts_local_noise_w      = document.querySelector('[name=tts_local_noise_w]').value;
+  } else if (mode === 'edge') {
+    payload.tts_edge_voice = document.querySelector('[name=tts_edge_voice]').value;
+  } else if (mode === 'cloud') {
+    payload.tts_cloud_api_key  = document.querySelector('[name=tts_cloud_api_key]').value;
+    payload.tts_cloud_base_url = document.querySelector('[name=tts_cloud_base_url]').value;
+    payload.tts_cloud_model    = document.querySelector('[name=tts_cloud_model]').value;
+    payload.tts_cloud_voice    = document.querySelector('[name=tts_cloud_voice]').value;
+    payload.tts_cloud_speed    = document.querySelector('[name=tts_cloud_speed]').value;
+  } else if (mode === 'google') {
+    payload.tts_google_api_key       = document.querySelector('[name=tts_google_api_key]').value;
+    payload.tts_google_voice         = document.querySelector('[name=tts_google_voice]').value;
+    payload.tts_google_language_code = document.querySelector('[name=tts_google_language_code]').value;
+  } else if (mode === 'azure') {
+    payload.tts_azure_api_key = document.querySelector('[name=tts_azure_api_key]').value;
+    payload.tts_azure_region  = document.querySelector('[name=tts_azure_region]').value;
+    payload.tts_azure_voice   = document.querySelector('[name=tts_azure_voice]').value;
+  } else {
+    payload.tts_elevenlabs_api_key    = document.querySelector('[name=tts_elevenlabs_api_key]').value;
+    payload.tts_elevenlabs_voice_id   = document.querySelector('[name=tts_elevenlabs_voice_id]').value;
+    payload.tts_elevenlabs_model_id   = document.querySelector('[name=tts_elevenlabs_model_id]').value;
+    payload.tts_elevenlabs_stability  = document.querySelector('[name=tts_elevenlabs_stability]').value;
+    payload.tts_elevenlabs_similarity = document.querySelector('[name=tts_elevenlabs_similarity]').value;
+  }
+
+  audio.classList.add('d-none');
+  try {
+    const resp = await fetch('/api/tts/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ error: resp.statusText }));
+      alert('Fehler: ' + (err.error || resp.statusText));
+      return;
+    }
+    const blob = await resp.blob();
+    audio.src = URL.createObjectURL(blob);
+    audio.classList.remove('d-none');
+    audio.play();
+  } catch (e) {
+    alert('Vorschau fehlgeschlagen: ' + e.message);
+  }
+}
+
+// ── Piper model browser ───────────────────────────────────────────────────────
+let _allVoices = [];
+
+async function loadInstalledModels() {
+  const container = document.getElementById('installed-models');
+  try {
+    const resp = await fetch('/api/tts/models');
+    const data = await resp.json();
+    _allVoices = data.voices || [];
+
+    // Render installed models
+    if (!data.models || data.models.length === 0) {
+      container.innerHTML = '<span class="text-secondary small">Keine Modelle installiert.</span>';
+    } else {
+      const currentPath = document.getElementById('tts-model-path').value;
+      container.innerHTML = data.models.map(m => {
+        const active = m.path === currentPath ? 'btn-primary' : 'btn-outline-primary';
+        return `<button type="button" class="btn btn-sm ${active} installed-model-btn"
+                        data-path="${escHtml(m.path)}" data-cfg="${escHtml(m.config_path)}"
+                        onclick="selectInstalledModel(this, '${escHtml(m.path)}', '${escHtml(m.config_path)}')">
+                  <i class="bi bi-check2 me-1"></i>${escHtml(m.name)}
+                  <span class="badge bg-secondary ms-1">${m.size_mb} MB</span>
+                </button>`;
+      }).join('');
+    }
+
+    filterVoices();
+  } catch (e) {
+    container.innerHTML = `<span class="text-danger small">Fehler: ${escHtml(e.message)}</span>`;
+  }
+}
+
+function selectInstalledModel(btn, path, cfgPath) {
+  document.getElementById('tts-model-path').value = path;
+  document.getElementById('tts-config-path').value = cfgPath;
+  document.getElementById('current-model-display').textContent = path || 'keins';
+  document.querySelectorAll('.installed-model-btn').forEach(b => {
+    b.classList.remove('btn-primary');
+    b.classList.add('btn-outline-primary');
+  });
+  btn.classList.remove('btn-outline-primary');
+  btn.classList.add('btn-primary');
+}
+
+function filterVoices() {
+  const lang = document.getElementById('dl-lang-filter').value;
+  const list = document.getElementById('voice-list');
+  const filtered = lang ? _allVoices.filter(v => v.lang === lang) : _allVoices;
+  if (!filtered.length) {
+    list.innerHTML = '<span class="text-secondary small">Keine Stimmen verfügbar.</span>';
+    return;
+  }
+  list.innerHTML = filtered.map(v =>
+    `<button type="button" class="btn btn-sm btn-outline-secondary"
+             onclick="downloadVoice('${v.id}', this)">
+      <i class="bi bi-download me-1"></i>${escHtml(v.name)}
+      <span class="badge bg-secondary ms-1">${v.size_mb} MB</span>
+    </button>`
+  ).join('');
+}
+
+async function downloadVoice(voiceId, btn) {
+  const progress = document.getElementById('dl-progress');
+  const status = document.getElementById('dl-status');
+  btn.disabled = true;
+  progress.classList.remove('d-none');
+  status.textContent = `Lade herunter: ${voiceId} …`;
+  try {
+    const resp = await fetch('/api/tts/download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voice_id: voiceId })
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      status.textContent = `Fertig: ${voiceId}`;
+      // Select newly downloaded model
+      document.getElementById('tts-model-path').value = data.path;
+      document.getElementById('tts-config-path').value = data.config_path || '';
+      document.getElementById('current-model-display').textContent = data.path;
+      await loadInstalledModels();
+    } else {
+      status.textContent = 'Fehler: ' + (data.error || 'Unbekannt');
+    }
+  } catch (e) {
+    status.textContent = 'Fehler: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => progress.classList.add('d-none'), 4000);
+  }
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+function showTestResult(containerId, result) {
+  const el = document.getElementById(containerId);
+  el.classList.remove('d-none');
+  if (result.ok) {
+    el.innerHTML = `
+      <div class="alert alert-success py-2 mb-0">
+        <i class="bi bi-check-circle-fill me-2"></i>
+        <strong>Verbindung erfolgreich!</strong>
+        ${result.version ? `<span class="ms-2 text-success-emphasis">Ollama v${result.version}</span>` : ''}
+        ${result.models && result.models.length ? `<br><small class="text-success-emphasis">
+          <i class="bi bi-box me-1"></i>Installierte Modelle: ${result.models.join(', ')}
+        </small>` : ''}
+        ${result.test_reply ? `<br><small class="text-success-emphasis">
+          <i class="bi bi-chat-dots me-1"></i>Modellantwort: <em>${escHtml(result.test_reply)}</em>
+        </small>` : ''}
+      </div>`;
+  } else {
+    el.innerHTML = `
+      <div class="alert alert-danger py-2 mb-0">
+        <i class="bi bi-x-circle-fill me-2"></i>
+        <strong>Fehler:</strong> ${escHtml(result.error || 'Unbekannter Fehler')}
+        ${result.models && result.models.length ? `<br><small>
+          Verfügbare Modelle: ${result.models.map(m =>
+            `<a href="#" class="text-warning" onclick="selectModel('${m}');return false">${m}</a>`
+          ).join(', ')}
+        </small>` : ''}
+      </div>`;
+  }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function selectModel(name) {
+  document.getElementById('llm-model').value = name;
+  document.getElementById('llm-test-result').classList.add('d-none');
+}
+
+function populateModelDropdown(models) {
+  const menu = document.getElementById('model-dropdown');
+  const btn = document.getElementById('btn-model-dropdown');
+  if (!models || !models.length) {
+    menu.innerHTML = '<li><span class="dropdown-item-text text-secondary small">Keine Modelle installiert</span></li>';
+    btn.disabled = true;
+    return;
+  }
+  menu.innerHTML = models.map(m =>
+    `<li><a class="dropdown-item" href="#" onclick="selectModel('${m}');return false">
+      <i class="bi bi-box me-2 text-secondary"></i>${m}
+    </a></li>`
+  ).join('');
+  btn.disabled = false;
+}
+
+// ── Ollama network scan ───────────────────────────────────────────────────────
+async function scanOllama() {
+  const icon = document.getElementById('scan-icon');
+  const spinner = document.getElementById('scan-spinner');
+  const btn = document.getElementById('btn-scan');
+  const resultsDiv = document.getElementById('scan-results');
+  const resultsList = document.getElementById('scan-results-list');
+  const emptyDiv = document.getElementById('scan-empty');
+
+  icon.classList.add('d-none');
+  spinner.classList.remove('d-none');
+  btn.disabled = true;
+  resultsDiv.classList.add('d-none');
+  emptyDiv.classList.add('d-none');
+
+  try {
+    const resp = await fetch('/api/ollama/scan', { method: 'POST' });
+    const data = await resp.json();
+
+    if (data.found && data.found.length > 0) {
+      resultsList.innerHTML = data.found.map(s => `
+        <button type="button" class="btn btn-sm btn-outline-primary scan-server-btn"
+                onclick="selectServer('${s.url}', ${JSON.stringify(s.models)})">
+          <i class="bi bi-pc-display me-1"></i>
+          <strong>${s.url}</strong>
+          <span class="badge bg-secondary ms-1">v${s.version}</span>
+          <span class="badge bg-primary ms-1">${s.models.length} Modelle</span>
+          ${s.models.length ? `<br><small class="text-secondary">${s.models.slice(0,4).join(', ')}${s.models.length>4?'…':''}</small>` : ''}
+        </button>`).join('');
+      resultsDiv.classList.remove('d-none');
+
+      // Auto-select if only one found
+      if (data.found.length === 1) {
+        selectServer(data.found[0].url, data.found[0].models);
+      }
+    } else {
+      emptyDiv.classList.remove('d-none');
+    }
+  } catch (e) {
+    emptyDiv.textContent = 'Scan fehlgeschlagen: ' + e.message;
+    emptyDiv.classList.remove('d-none');
+  } finally {
+    icon.classList.remove('d-none');
+    spinner.classList.add('d-none');
+    btn.disabled = false;
+  }
+}
+
+function selectServer(url, models) {
+  document.getElementById('llm-url').value = url;
+  populateModelDropdown(models);
+  // highlight selected button
+  document.querySelectorAll('.scan-server-btn').forEach(b => b.classList.remove('btn-primary'));
+  event.currentTarget && event.currentTarget.classList.add('btn-primary');
+  document.getElementById('llm-test-result').classList.add('d-none');
+}
+
+// ── Ollama connection test ────────────────────────────────────────────────────
+async function testOllamaConnection() {
+  const icon = document.getElementById('test-icon');
+  const spinner = document.getElementById('test-spinner');
+  const url = document.getElementById('llm-url').value.trim() || 'http://localhost:11434';
+  const model = document.getElementById('llm-model').value.trim() || 'llama3';
+
+  icon.classList.add('d-none');
+  spinner.classList.remove('d-none');
+  document.getElementById('llm-test-result').classList.add('d-none');
+
+  try {
+    const resp = await fetch('/api/ollama/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, model })
+    });
+    const result = await resp.json();
+    showTestResult('llm-test-result', result);
+    if (result.models) populateModelDropdown(result.models);
+  } catch (e) {
+    showTestResult('llm-test-result', { ok: false, error: 'Anfrage fehlgeschlagen: ' + e.message });
+  } finally {
+    icon.classList.remove('d-none');
+    spinner.classList.add('d-none');
+  }
+}
+
+// ── Per-section AJAX save ─────────────────────────────────────────────────────
+async function saveSection(cardId) {
+  const card = document.getElementById(cardId);
+  const btn  = card.querySelector('.save-section-btn');
+  const resultEl = card.querySelector('.save-section-result');
+
+  btn.disabled = true;
+  resultEl.innerHTML = '<span class="spinner-border spinner-border-sm text-secondary me-1"></span>';
+
+  // Collect all named fields that are NOT inside a .d-none ancestor
+  const data = {};
+  card.querySelectorAll('input, select, textarea').forEach(el => {
+    if (!el.name || el.closest('.d-none')) return;
+    if (el.type === 'radio'     && !el.checked) return;
+    if (el.type === 'checkbox') { data[el.name] = el.checked ? 'true' : 'false'; return; }
+    data[el.name] = el.value;
+  });
+
+  try {
+    const resp = await fetch('/api/config/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const result = await resp.json();
+    if (result.ok) {
+      resultEl.innerHTML = '<span class="text-success fw-semibold"><i class="bi bi-check-circle-fill me-1"></i>Gespeichert.</span>';
+    } else {
+      resultEl.innerHTML = `<span class="text-danger fw-semibold"><i class="bi bi-x-circle-fill me-1"></i>${escHtml(result.error || 'Fehler')}</span>`;
+    }
+  } catch (e) {
+    resultEl.innerHTML = `<span class="text-danger fw-semibold"><i class="bi bi-x-circle-fill me-1"></i>Netzwerkfehler: ${escHtml(e.message)}</span>`;
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { resultEl.innerHTML = ''; }, 3000);
+  }
+}
+
+// ── STT Test ──────────────────────────────────────────────────────────────────
+async function testSTT(mode) {
+  const iconId    = `stt-test-${mode}-icon`;
+  const spinnerId = `stt-test-${mode}-spinner`;
+  const resultId  = `stt-test-${mode}-result`;
+  document.getElementById(iconId).classList.add('d-none');
+  document.getElementById(spinnerId).classList.remove('d-none');
+  document.getElementById(resultId).classList.add('d-none');
+
+  let payload = {};
+  if (mode === 'cloud') {
+    payload.stt_mode           = 'cloud';
+    payload.stt_cloud_api_key  = document.getElementById('stt-api-key').value;
+    payload.stt_cloud_base_url = document.getElementById('stt-base-url').value;
+    payload.stt_cloud_model    = document.getElementById('stt-cloud-model').value;
+    payload.stt_language       = document.getElementById('stt-lang-cloud').value;
+  } else {
+    payload.stt_mode        = 'local';
+    payload.stt_local_model = document.querySelector('[name=stt_local_model]').value;
+    payload.stt_language    = document.getElementById('stt-lang-local').value;
+  }
+
+  const resultEl = document.getElementById(resultId);
+  resultEl.classList.remove('d-none');
+  try {
+    const resp = await fetch('/api/stt/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      resultEl.innerHTML = `
+        <div class="alert alert-success py-2 mb-0 small">
+          <i class="bi bi-check-circle-fill me-1"></i>
+          <strong>Erkannt:</strong> <em>${escHtml(data.transcription || '(leer)')}</em><br>
+          <span class="text-success-emphasis">Erwartet: <em>${escHtml(data.expected)}</em></span>
+        </div>`;
+    } else {
+      resultEl.innerHTML = `
+        <div class="alert alert-danger py-2 mb-0 small">
+          <i class="bi bi-x-circle-fill me-1"></i>
+          <strong>Fehler:</strong> ${escHtml(data.error || 'Unbekannt')}
+        </div>`;
+    }
+  } catch (e) {
+    resultEl.innerHTML = `<div class="alert alert-danger py-2 mb-0 small">Anfrage fehlgeschlagen: ${escHtml(e.message)}</div>`;
+  } finally {
+    document.getElementById(iconId).classList.remove('d-none');
+    document.getElementById(spinnerId).classList.add('d-none');
+  }
+}
+
+// ── Init on load ──────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const ttsMode = document.querySelector('input[name="tts_mode"]:checked');
+  if (ttsMode && ttsMode.value === 'local') loadInstalledModels();
+  // Pre-populate voice download list even if mode is not local
+  if (ttsMode && ttsMode.value !== 'local') {
+    fetch('/api/tts/models').then(r => r.json()).then(data => {
+      _allVoices = data.voices || [];
+      filterVoices();
+    }).catch(() => {});
+  }
+  // Init LLM provider grid if cloud mode is active
+  const llmMode = document.querySelector('input[name="llm_mode"]:checked');
+  if (llmMode && llmMode.value === 'cloud') initProviderGrid();
+});
+
+// ── Cloud LLM provider presets ────────────────────────────────────────────────
+const LLM_PROVIDERS = {
+  groq: {
+    name: "Groq", badge: "Kostenlos", badgeClass: "bg-success",
+    base_url: "https://api.groq.com/openai/v1",
+    models: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "gemma2-9b-it", "mixtral-8x7b-32768"],
+    key_placeholder: "gsk_…",
+    instructions: `<strong><i class="bi bi-stars me-1"></i>Groq</strong> – kostenlos, kein Guthaben nötig.
+      <ol class="mb-0 mt-1">
+        <li>Registriere dich kostenlos unter <a href="https://console.groq.com" target="_blank">console.groq.com</a></li>
+        <li>Erstelle einen API-Key unter <strong>API Keys</strong> (kein Kreditkarte erforderlich)</li>
+        <li>Trage den Key unten ein – fertig</li>
+        <li>Empfohlen: <code>llama-3.3-70b-versatile</code> (sehr schnell, top Qualität)</li>
+      </ol>`
+  },
+  gemini: {
+    name: "Google Gemini", badge: "Kostenlos", badgeClass: "bg-success",
+    base_url: "https://generativelanguage.googleapis.com/v1beta/openai/",
+    models: ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"],
+    key_placeholder: "AIza…",
+    instructions: `<strong><i class="bi bi-google me-1"></i>Google Gemini</strong> – kostenlos mit großzügigem Free Tier.
+      <ol class="mb-0 mt-1">
+        <li>Gehe zu <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a></li>
+        <li>Klicke <strong>Create API key</strong> (Google-Konto genügt)</li>
+        <li>Kein Guthaben nötig – kostenlos bis Rate-Limits</li>
+        <li>Empfohlen: <code>gemini-2.0-flash</code> (schnell, kostenlos)</li>
+      </ol>`
+  },
+  openrouter: {
+    name: "OpenRouter", badge: "Teilw. kostenlos", badgeClass: "bg-info text-dark",
+    base_url: "https://openrouter.ai/api/v1",
+    models: ["google/gemma-2-9b-it:free", "meta-llama/llama-3.2-3b-instruct:free", "mistralai/mistral-7b-instruct:free", "openai/gpt-4o-mini", "anthropic/claude-3.5-haiku"],
+    key_placeholder: "sk-or-…",
+    instructions: `<strong><i class="bi bi-diagram-3 me-1"></i>OpenRouter</strong> – Zugang zu hunderten Modellen, viele davon kostenlos.
+      <ol class="mb-0 mt-1">
+        <li>Registriere dich unter <a href="https://openrouter.ai" target="_blank">openrouter.ai</a></li>
+        <li>Erstelle einen API-Key unter <strong>Keys</strong></li>
+        <li>Modelle mit <code>:free</code>-Suffix sind kostenlos (z.B. <code>google/gemma-2-9b-it:free</code>)</li>
+        <li>Für kostenpflichtige Modelle: Guthaben unter <strong>Credits</strong> aufladen</li>
+      </ol>`
+  },
+  openai: {
+    name: "OpenAI", badge: "Bezahlt", badgeClass: "bg-secondary",
+    base_url: "https://api.openai.com/v1",
+    models: ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"],
+    key_placeholder: "sk-proj-…",
+    instructions: `<strong><i class="bi bi-robot me-1"></i>OpenAI</strong> – bezahlter Dienst, beste GPT-Modelle.
+      <ol class="mb-0 mt-1">
+        <li>Registriere dich unter <a href="https://platform.openai.com" target="_blank">platform.openai.com</a></li>
+        <li>Erstelle einen API-Key unter <strong>API Keys</strong></li>
+        <li>Guthaben aufladen unter <strong>Billing → Add payment method</strong></li>
+        <li>Empfohlen: <code>gpt-4o-mini</code> (günstig &amp; schnell)</li>
+      </ol>`
+  },
+  deepseek: {
+    name: "DeepSeek", badge: "Sehr günstig", badgeClass: "bg-primary",
+    base_url: "https://api.deepseek.com/v1",
+    models: ["deepseek-chat", "deepseek-reasoner"],
+    key_placeholder: "sk-…",
+    instructions: `<strong><i class="bi bi-lightning-charge me-1"></i>DeepSeek</strong> – extrem günstig, leistungsstarke chinesische Modelle.
+      <ol class="mb-0 mt-1">
+        <li>Registriere dich unter <a href="https://platform.deepseek.com" target="_blank">platform.deepseek.com</a></li>
+        <li>Erstelle einen API-Key</li>
+        <li>Guthaben aufladen (Token-Preise weit unter OpenAI-Niveau)</li>
+        <li>Empfohlen: <code>deepseek-chat</code></li>
+      </ol>`
+  },
+  together: {
+    name: "Together AI", badge: "$5 gratis", badgeClass: "bg-warning text-dark",
+    base_url: "https://api.together.xyz/v1",
+    models: ["meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo", "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", "mistralai/Mixtral-8x7B-Instruct-v0.1"],
+    key_placeholder: "…",
+    instructions: `<strong><i class="bi bi-people me-1"></i>Together AI</strong> – $5 Gratis-Credits bei Registrierung, danach günstig.
+      <ol class="mb-0 mt-1">
+        <li>Registriere dich unter <a href="https://api.together.ai" target="_blank">api.together.ai</a></li>
+        <li>Erstelle einen API-Key unter <strong>Settings → API Keys</strong></li>
+        <li>$5 Startguthaben werden automatisch gutgeschrieben</li>
+        <li>Empfohlen: <code>meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo</code></li>
+      </ol>`
+  },
+  mistral: {
+    name: "Mistral AI", badge: "Bezahlt", badgeClass: "bg-secondary",
+    base_url: "https://api.mistral.ai/v1",
+    models: ["mistral-small-latest", "mistral-medium-latest", "open-mistral-7b", "open-mixtral-8x7b"],
+    key_placeholder: "…",
+    instructions: `<strong><i class="bi bi-flag me-1"></i>Mistral AI</strong> – europäischer Anbieter, DSGVO-freundlich.
+      <ol class="mb-0 mt-1">
+        <li>Registriere dich unter <a href="https://console.mistral.ai" target="_blank">console.mistral.ai</a></li>
+        <li>Erstelle einen API-Key unter <strong>API Keys</strong></li>
+        <li>Guthaben unter <strong>Billing</strong> aufladen</li>
+        <li>Empfohlen: <code>mistral-small-latest</code> (günstig &amp; gut)</li>
+      </ol>`
+  },
+  custom: {
+    name: "Eigene URL", badge: null, badgeClass: null,
+    base_url: "",
+    models: [],
+    key_placeholder: "…",
+    instructions: `<strong><i class="bi bi-wrench me-1"></i>Benutzerdefiniert</strong> – jede OpenAI-kompatible API (LM Studio, llama.cpp, vLLM, LocalAI …).
+      <ul class="mb-0 mt-1">
+        <li>Basis-URL muss auf <code>/v1</code> enden, z.B. <code>http://192.168.1.10:8080/v1</code></li>
+        <li>API-Key kann leer oder ein beliebiger Dummy-Wert sein (je nach Server)</li>
+        <li>Modellname muss dem auf dem Server installierten Namen entsprechen</li>
+      </ul>`
+  }
+};
+
+function detectProviderFromUrl(url) {
+  if (!url) return 'openai';
+  if (url.includes('groq.com'))                        return 'groq';
+  if (url.includes('googleapis.com'))                  return 'gemini';
+  if (url.includes('openrouter.ai'))                   return 'openrouter';
+  if (url.includes('api.openai.com'))                  return 'openai';
+  if (url.includes('deepseek.com'))                    return 'deepseek';
+  if (url.includes('together.xyz'))                    return 'together';
+  if (url.includes('mistral.ai'))                      return 'mistral';
+  return 'custom';
+}
+
+let _currentProvider = null;
+
+function buildProviderGrid() {
+  const grid = document.getElementById('llm-provider-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  for (const [id, p] of Object.entries(LLM_PROVIDERS)) {
+    const col = document.createElement('div');
+    col.className = 'col-6 col-md-3';
+    col.innerHTML = `
+      <div class="llm-provider-card border rounded-2 p-2 text-center h-100 d-flex flex-column align-items-center justify-content-center gap-1"
+           id="llm-pcard-${id}" onclick="selectProvider('${id}')" role="button" style="cursor:pointer;transition:all .15s">
+        <div class="fw-semibold small">${escHtml(p.name)}</div>
+        ${p.badge ? `<span class="badge ${p.badgeClass} small py-1">${escHtml(p.badge)}</span>` : ''}
+      </div>`;
+    grid.appendChild(col);
+  }
+}
+
+function selectProvider(id) {
+  _currentProvider = id;
+  const p = LLM_PROVIDERS[id];
+  if (!p) return;
+
+  // Highlight selected card
+  document.querySelectorAll('.llm-provider-card').forEach(el => {
+    el.classList.remove('border-warning', 'bg-warning', 'bg-opacity-10');
+  });
+  const card = document.getElementById('llm-pcard-' + id);
+  if (card) card.classList.add('border-warning', 'bg-warning', 'bg-opacity-10');
+
+  // Show instructions
+  const info = document.getElementById('llm-provider-info');
+  info.innerHTML = p.instructions;
+  info.classList.remove('d-none');
+
+  // Pre-fill URL (only if selecting a non-custom provider with a URL)
+  if (p.base_url !== '' || id === 'custom') {
+    document.getElementById('llm-cloud-url').value = p.base_url;
+  }
+
+  // Update key placeholder
+  document.getElementById('llm-cloud-key').placeholder = p.key_placeholder || 'API-Key…';
+
+  // Fill model dropdown
+  const dd = document.getElementById('llm-model-dd');
+  const ddBtn = document.getElementById('llm-model-dd-btn');
+  if (p.models.length > 0) {
+    dd.innerHTML = p.models.map(m =>
+      `<li><a class="dropdown-item" href="#" onclick="event.preventDefault();document.getElementById('llm-cloud-model').value='${m}'">${m}</a></li>`
+    ).join('');
+    ddBtn.disabled = false;
+  } else {
+    dd.innerHTML = '<li><span class="dropdown-item-text text-secondary small">Kein Preset verfügbar</span></li>';
+    ddBtn.disabled = true;
+  }
+
+  // Suggest first model if field is empty
+  if (!document.getElementById('llm-cloud-model').value && p.models.length > 0) {
+    document.getElementById('llm-cloud-model').value = p.models[0];
+  }
+}
+
+function initProviderGrid() {
+  buildProviderGrid();
+  const savedUrl = document.getElementById('llm-cloud-url')?.value || '';
+  const detected = detectProviderFromUrl(savedUrl);
+  selectProvider(detected);
+  // Don't overwrite the saved URL when auto-detecting
+  document.getElementById('llm-cloud-url').value = savedUrl || LLM_PROVIDERS[detected].base_url;
+}
+
+// ── Cloud LLM connection test ─────────────────────────────────────────────────
+async function testCloudConnection() {
+  const icon = document.getElementById('cloud-test-icon');
+  const spinner = document.getElementById('cloud-test-spinner');
+  icon.classList.add('d-none');
+  spinner.classList.remove('d-none');
+  document.getElementById('llm-cloud-test-result').classList.add('d-none');
+  try {
+    const resp = await fetch('/api/llm/test-cloud', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: document.getElementById('llm-cloud-key').value,
+        base_url: document.getElementById('llm-cloud-url').value,
+        model: document.getElementById('llm-cloud-model').value || 'gpt-4o-mini'
+      })
+    });
+    const result = await resp.json();
+    showTestResult('llm-cloud-test-result', result);
+  } catch (e) {
+    showTestResult('llm-cloud-test-result', { ok: false, error: 'Anfrage fehlgeschlagen: ' + e.message });
+  } finally {
+    icon.classList.remove('d-none');
+    spinner.classList.add('d-none');
+  }
+}
+</script>
+
+<style>
+.scan-server-btn {
+  text-align: left;
+  line-height: 1.4;
+  padding: 0.5rem 0.75rem;
+}
+.llm-provider-card {
+  min-height: 64px;
+  border-color: var(--bs-border-color) !important;
+  user-select: none;
+}
+.llm-provider-card:hover {
+  border-color: #ffc107 !important;
+  background: rgba(255,193,7,.06);
+}
+</style>
+{% endblock %}

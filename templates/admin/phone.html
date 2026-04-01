@@ -1,0 +1,820 @@
+{% extends "base.html" %}
+{% block title %}Telefonanschluss – AI-Caller Admin{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-9">
+    <h4 class="mb-1"><i class="bi bi-telephone me-2 text-primary"></i>Telefonanschluss</h4>
+    <p class="text-secondary mb-4">Verbinde den KI-Anrufbeantworter mit deinem Telefonsystem.</p>
+
+    {% if alert %}
+    <div class="alert alert-{{ alert.type }} alert-dismissible fade show d-flex align-items-start gap-2">
+      <i class="bi bi-{% if alert.type == 'success' %}check-circle-fill{% elif alert.type == 'danger' %}x-circle-fill{% else %}exclamation-triangle-fill{% endif %} mt-1 flex-shrink-0"></i>
+      <div>{{ alert.msg }}</div>
+      <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+
+    <!-- ══ EINRICHTUNGSASSISTENT ══════════════════════════════════════════════ -->
+    <div class="card mb-4 border-primary">
+      <div class="card-header bg-primary bg-opacity-10 d-flex align-items-center justify-content-between">
+        <h6 class="mb-0 text-primary"><i class="bi bi-magic me-2"></i>Einrichtungsassistent</h6>
+        <span class="badge bg-primary">Empfohlen</span>
+      </div>
+      <div class="card-body">
+
+        <!-- Step indicator -->
+        <div class="d-flex align-items-center gap-2 mb-4" id="wz-steps">
+          <span class="wz-step-dot active" id="dot-1">1</span>
+          <div class="wz-step-line" id="line-1"></div>
+          <span class="wz-step-dot" id="dot-2">2</span>
+          <div class="wz-step-line" id="line-2"></div>
+          <span class="wz-step-dot" id="dot-3">3</span>
+          <div class="wz-step-line" id="line-3"></div>
+          <span class="wz-step-dot" id="dot-4">4</span>
+        </div>
+
+        <!-- ── Step 1: Scan ─────────────────────────────────────────────────── -->
+        <div id="wz-1">
+          <h6 class="mb-1">Schritt 1: FritzBox im Netzwerk suchen</h6>
+          <p class="text-secondary small mb-3">
+            Der Assistent durchsucht automatisch dein Netzwerk nach einer FritzBox
+            (SSDP, fritz.box-Hostname, Standard-Gateway, bekannte IPs).
+          </p>
+          <button class="btn btn-primary" onclick="wzScan()">
+            <i class="bi bi-search me-1"></i>Suche starten
+          </button>
+          <div id="wz-scan-status" class="mt-3"></div>
+        </div>
+
+        <!-- ── Step 2: Select device + admin password ──────────────────────── -->
+        <div id="wz-2" class="d-none">
+          <h6 class="mb-1">Schritt 2: FritzBox auswählen &amp; anmelden</h6>
+          <p class="text-secondary small mb-3">
+            Wähle die gefundene FritzBox und gib das FritzBox-Administratorpasswort ein
+            (das Passwort, mit dem du dich unter <code>http://fritz.box</code> anmeldest).
+          </p>
+          <div id="wz-found-list" class="mb-3"></div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold">FritzBox-Passwort <span class="text-danger">*</span></label>
+              <input type="password" id="wz-fb-pw" class="form-control" placeholder="Admin-Passwort">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Benutzername</label>
+              <input type="text" id="wz-fb-user" class="form-control" value="admin" placeholder="admin">
+            </div>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary btn-sm" onclick="wzGo(1)">
+              <i class="bi bi-arrow-left me-1"></i>Zurück
+            </button>
+            <button class="btn btn-primary" onclick="wzLoadClients()" id="btn-load-clients">
+              <i class="bi bi-plug me-1"></i>Verbinden &amp; Geräte laden
+            </button>
+          </div>
+          <div id="wz-clients-status" class="mt-3"></div>
+        </div>
+
+        <!-- ── Step 3: Select SIP phone slot ──────────────────────────────── -->
+        <div id="wz-3" class="d-none">
+          <h6 class="mb-1">Schritt 3: IP-Telefon &amp; SIP-Zugangsdaten</h6>
+          <p class="text-secondary small mb-3">
+            Wähle das interne IP-Telefon aus, das der KI-Anrufbeantworter verwenden soll.
+          </p>
+          <div id="wz-client-cards" class="mb-3"></div>
+
+          <!-- SIP credentials – user enters the credentials they set in FritzBox -->
+          <div id="wz-sip-creds" class="d-none">
+            <div class="alert alert-info small py-2 mb-3">
+              <i class="bi bi-info-circle me-1"></i>
+              Gib den <strong>Benutzernamen</strong> und das <strong>Passwort</strong> ein, die du beim
+              Anlegen des IP-Telefons in der FritzBox vergeben hast.
+              Das sind <strong>andere</strong> Zugangsdaten als das FritzBox-Administratorpasswort!
+            </div>
+            <div class="card bg-body-secondary mb-3">
+              <div class="card-body py-2 px-3">
+                <p class="small fw-semibold mb-2 text-secondary">
+                  <i class="bi bi-telephone-fill me-1"></i>SIP-Zugangsdaten des IP-Telefons
+                </p>
+                <div class="row g-2 align-items-end">
+                  <div class="col-md-3">
+                    <label class="form-label form-label-sm mb-1">FritzBox-Adresse</label>
+                    <input type="text" id="wz-sip-host-display" class="form-control form-control-sm" readonly>
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label form-label-sm mb-1">
+                      Benutzername
+                      <i class="bi bi-question-circle text-secondary ms-1"
+                         title="Der Benutzername, den du beim Anlegen des IP-Telefons in der FritzBox eingetragen hast (Telefonie → Telefoniegeräte → Gerät bearbeiten)"
+                         data-bs-toggle="tooltip"></i>
+                    </label>
+                    <input type="text" id="wz-sip-user-field" class="form-control form-control-sm"
+                           placeholder="z.B. 620 oder eigener Name"
+                           oninput="wz.clientId = this.value; wzCheckReady()">
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label form-label-sm mb-1">
+                      Passwort
+                      <i class="bi bi-question-circle text-secondary ms-1"
+                         title="Das Passwort, das du beim Anlegen des IP-Telefons in der FritzBox gesetzt hast"
+                         data-bs-toggle="tooltip"></i>
+                    </label>
+                    <div class="input-group input-group-sm">
+                      <input type="password" id="wz-sip-pw-field" class="form-control"
+                             placeholder="Passwort des IP-Telefons"
+                             oninput="wz.sipPassword = this.value; wzCheckReady()">
+                      <button class="btn btn-outline-secondary" type="button"
+                              onclick="wzTogglePw()" title="Passwort anzeigen/verbergen">
+                        <i class="bi bi-eye" id="wz-pw-eye"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-2">
+                  <small class="text-secondary">
+                    <i class="bi bi-lightbulb me-1"></i>
+                    Du findest Benutzername und Passwort in der FritzBox unter
+                    <a href="#" onclick="window.open('http://'+document.getElementById('wz-sip-host-display').value+'/', '_blank'); return false;"
+                       class="text-info">Telefonie → Telefoniegeräte → Gerät bearbeiten</a>.
+                  </small>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="wz-setup-status" class="mb-3"></div>
+          <div class="d-flex gap-2 flex-wrap">
+            <button class="btn btn-outline-secondary btn-sm" onclick="wzGo(2)">
+              <i class="bi bi-arrow-left me-1"></i>Zurück
+            </button>
+            <button class="btn btn-success" onclick="wzSaveAndFinish()" id="btn-wizard-setup" disabled>
+              <i class="bi bi-check-lg me-1"></i>Speichern &amp; weiter
+            </button>
+          </div>
+        </div>
+
+        <!-- ── Step 4: Done ─────────────────────────────────────────────────── -->
+        <div id="wz-4" class="d-none">
+          <div class="text-center py-3">
+            <i class="bi bi-check-circle-fill text-success display-4"></i>
+            <h5 class="mt-3 mb-1">Einrichtung abgeschlossen!</h5>
+            <p class="text-secondary" id="wz-done-msg"></p>
+            <div class="d-flex gap-2 justify-content-center mt-3 flex-wrap">
+              <button class="btn btn-outline-info" onclick="wzRunSipTest()" id="btn-sip-test">
+                <i class="bi bi-radar me-1"></i>Verbindungstest
+              </button>
+              <form method="post" action="{{ url_for('admin_phone') }}">
+                <input type="hidden" name="action" value="connect">
+                <input type="hidden" name="phone_mode" value="fritzbox" id="hidden-mode">
+                <input type="hidden" name="sip_host"     id="hidden-host">
+                <input type="hidden" name="sip_port"     value="5060">
+                <input type="hidden" name="sip_username" id="hidden-user">
+                <input type="hidden" name="sip_password" id="hidden-pass">
+                <button type="submit" class="btn btn-success" onclick="showConnecting(this)">
+                  <span id="btn-wz-conn-icon"><i class="bi bi-plug-fill me-1"></i>Verbinden</span>
+                  <span id="btn-wz-conn-spin" class="d-none">
+                    <span class="spinner-border spinner-border-sm me-1"></span>Verbinde…
+                  </span>
+                </button>
+              </form>
+              <button class="btn btn-outline-secondary" onclick="wzGo(1)">
+                <i class="bi bi-arrow-counterclockwise me-1"></i>Neu starten
+              </button>
+            </div>
+          </div>
+        </div>
+
+
+      </div>
+    </div>
+
+    <!-- ══ LIVE-DIAGNOSE ═════════════════════════════════════════════════════ -->
+    <div id="diag-panel" class="card mb-4 d-none">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <h6 class="mb-0"><i class="bi bi-terminal me-2 text-info"></i>Live-Diagnose</h6>
+        <button class="btn btn-sm btn-outline-secondary py-0" onclick="clearDiag()">
+          <i class="bi bi-trash"></i>
+        </button>
+      </div>
+      <div class="card-body p-0">
+        <div id="diag-log" class="diag-log-container p-2"></div>
+      </div>
+    </div>
+
+    <!-- ══ MANUELLE EINRICHTUNG (Expander) ══════════════════════════════════ -->
+    <div class="card mb-4">
+      <div class="card-header d-flex align-items-center justify-content-between"
+           style="cursor:pointer" onclick="toggleManualForm()">
+        <h6 class="mb-0"><i class="bi bi-gear me-2 text-secondary"></i>Manuelle Konfiguration</h6>
+        <i class="bi bi-chevron-down text-secondary" id="manual-chevron"></i>
+      </div>
+      <div id="manual-form-body" class="d-none">
+        <div class="card-body">
+          <p class="text-secondary small">Für erfahrene Nutzer oder SIP-Provider.</p>
+
+          {% if status.active %}
+          <div class="alert alert-success d-flex align-items-center gap-2 mb-3">
+            <i class="bi bi-check-circle-fill"></i>
+            <span>Verbunden: <strong>{{ cfg.sip_username }}@{{ cfg.sip_host }}</strong></span>
+          </div>
+          {% endif %}
+
+          <form method="post" id="phone-form">
+            <div class="row g-3 mb-4">
+              <div class="col-md-6">
+                <div class="option-card {% if cfg.phone_mode == 'fritzbox' or not cfg.phone_mode %}selected{% endif %}"
+                     onclick="selectMode('fritzbox')">
+                  <input type="radio" name="phone_mode" value="fritzbox" id="mode-fritzbox"
+                         {% if cfg.phone_mode == 'fritzbox' or not cfg.phone_mode %}checked{% endif %} class="d-none">
+                  <div class="p-3 text-center">
+                    <i class="bi bi-router display-4 text-primary"></i>
+                    <h6 class="mt-2 mb-1">FritzBox</h6>
+                    <small class="text-secondary">Internes SIP-Gerät im Heimnetz</small>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="option-card {% if cfg.phone_mode == 'sip' %}selected{% endif %}"
+                     onclick="selectMode('sip')">
+                  <input type="radio" name="phone_mode" value="sip" id="mode-sip"
+                         {% if cfg.phone_mode == 'sip' %}checked{% endif %} class="d-none">
+                  <div class="p-3 text-center">
+                    <i class="bi bi-cloud-fill display-4 text-success"></i>
+                    <h6 class="mt-2 mb-1">SIP-Provider</h6>
+                    <small class="text-secondary">Eigene Rufnummer via SIP-Zugangsdaten</small>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div id="info-fritzbox" class="alert alert-info {% if cfg.phone_mode != 'fritzbox' %}d-none{% endif %}">
+              <h6 class="alert-heading"><i class="bi bi-info-circle me-1"></i>FritzBox einrichten</h6>
+              <ol class="mb-0 small">
+                <li>FritzBox-Oberfläche öffnen: <code>http://fritz.box</code></li>
+                <li>Zu <strong>Telefonie → Telefoniegeräte → Neues Gerät einrichten</strong></li>
+                <li><strong>Telefon (mit und ohne Anrufbeantworter)</strong> wählen</li>
+                <li><strong>LAN/WLAN (IP-Telefon)</strong> → Namen vergeben</li>
+                <li>Benutzername (z.B. <code>620</code>) notieren und Passwort setzen</li>
+                <li>Host: IP der FritzBox (z.B. <code>192.168.178.1</code>), Port: <code>5060</code></li>
+                <li>Rufnummer zuweisen (alle eingehenden Anrufe)</li>
+              </ol>
+            </div>
+
+            <div id="info-sip" class="alert alert-info {% if cfg.phone_mode != 'sip' %}d-none{% endif %}">
+              <h6 class="alert-heading"><i class="bi bi-info-circle me-1"></i>SIP-Provider</h6>
+              <p class="small mb-1">Zugangsdaten von Sipgate, IONOS, Telekom etc.</p>
+              <ul class="small mb-0">
+                <li><strong>Host:</strong> SIP-Server des Anbieters</li>
+                <li><strong>Port:</strong> meist <code>5060</code></li>
+                <li><strong>Benutzername:</strong> SIP-ID oder Rufnummer</li>
+              </ul>
+            </div>
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">SIP-Host <span class="text-danger">*</span></label>
+                <input type="text" name="sip_host" class="form-control"
+                       placeholder="192.168.178.1 oder sip.sipgate.de"
+                       value="{{ cfg.sip_host }}">
+              </div>
+              <div class="col-md-2">
+                <label class="form-label">Port</label>
+                <input type="number" name="sip_port" class="form-control"
+                       value="{{ cfg.sip_port }}" placeholder="5060">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Benutzername <span class="text-danger">*</span></label>
+                <input type="text" name="sip_username" class="form-control"
+                       placeholder="620 oder SIP-ID"
+                       value="{{ cfg.sip_username }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Passwort <span class="text-danger">*</span></label>
+                <input type="password" name="sip_password" class="form-control"
+                       value="{{ cfg.sip_password }}">
+              </div>
+            </div>
+
+            <div class="d-flex gap-2 mt-4 flex-wrap">
+              <button type="submit" name="action" value="save" class="btn btn-outline-secondary">
+                <i class="bi bi-save me-1"></i>Speichern
+              </button>
+              <button type="button" class="btn btn-outline-info" onclick="runManualSipTest()" id="btn-manual-test">
+                <i class="bi bi-radar me-1"></i>Verbindungstest
+              </button>
+              {% if not status.active %}
+              <button type="submit" name="action" value="connect" class="btn btn-success"
+                      id="btn-connect" onclick="showConnecting(this)">
+                <span id="btn-connect-icon"><i class="bi bi-plug-fill me-1"></i>Verbinden</span>
+                <span id="btn-connect-spinner" class="d-none">
+                  <span class="spinner-border spinner-border-sm me-1"></span>Verbinde…
+                </span>
+              </button>
+              {% else %}
+              <button type="submit" name="action" value="disconnect" class="btn btn-danger">
+                <i class="bi bi-plug me-1"></i>Trennen
+              </button>
+              {% endif %}
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Wizard state ───────────────────────────────────────────────────────────
+const wz = {
+  step: 1,
+  ip: '',
+  clientIndex: null,
+  clientId: '',
+  sipPassword: '',
+};
+
+function wzGo(step) {
+  document.querySelectorAll('[id^="wz-"]').forEach(el => {
+    if (/^wz-\d+$/.test(el.id)) el.classList.add('d-none');
+  });
+  document.getElementById('wz-' + step).classList.remove('d-none');
+  wz.step = step;
+  // Update step dots
+  for (let i = 1; i <= 4; i++) {
+    const dot = document.getElementById('dot-' + i);
+    dot.classList.toggle('active', i <= step);
+    dot.classList.toggle('done',   i < step);
+    if (i < 4) {
+      document.getElementById('line-' + i).classList.toggle('done', i < step);
+    }
+  }
+}
+
+// ── Step 1: Scan ──────────────────────────────────────────────────────────
+async function wzScan() {
+  const status = document.getElementById('wz-scan-status');
+  status.innerHTML = '<div class="d-flex align-items-center gap-2 text-secondary small">'
+    + '<span class="spinner-border spinner-border-sm"></span>Suche läuft (SSDP, fritz.box, Gateway)…</div>';
+
+  try {
+    const res = await fetch('/api/fritzbox/scan', { method: 'POST' });
+    const data = await res.json();
+
+    if (!data.ok || data.found.length === 0) {
+      status.innerHTML = '<div class="alert alert-warning small mb-0">'
+        + '<i class="bi bi-exclamation-triangle me-1"></i>'
+        + 'Keine FritzBox gefunden. Bitte IP manuell eingeben:</div>'
+        + '<div class="mt-2 row g-2 align-items-end">'
+        + '<div class="col-auto"><input type="text" id="wz-manual-ip" class="form-control form-control-sm" placeholder="192.168.178.1" style="width:180px"></div>'
+        + '<div class="col-auto"><button class="btn btn-primary btn-sm" onclick="wzManualIpContinue()">Weiter</button></div></div>';
+      return;
+    }
+
+    // Build found device list and go to step 2
+    const list = document.getElementById('wz-found-list');
+    list.innerHTML = data.found.map(d =>
+      `<div class="found-device-card ${data.found.length === 1 ? 'selected' : ''}"
+            id="fdc-${d.ip}" onclick="wzSelectDevice('${d.ip}')">
+        <i class="bi bi-router text-primary me-2 fs-5"></i>
+        <div class="flex-grow-1">
+          <strong>${escHtml(d.friendly_name || 'FRITZ!Box')}</strong>
+          ${d.model ? `<small class="text-secondary ms-1">${escHtml(d.model)}</small>` : ''}
+          <div class="small text-secondary">${escHtml(d.ip)}</div>
+        </div>
+        <i class="bi bi-check-circle-fill text-success fs-5 check-icon d-none"></i>
+      </div>`
+    ).join('');
+
+    if (data.found.length === 1) {
+      wzSelectDevice(data.found[0].ip);
+    }
+
+    status.innerHTML = `<div class="alert alert-success small mb-0 py-2">
+      <i class="bi bi-check-circle me-1"></i>${data.found.length} FritzBox gefunden.</div>`;
+
+    wzGo(2);
+  } catch (e) {
+    status.innerHTML = `<div class="alert alert-danger small mb-0">${escHtml(String(e))}</div>`;
+  }
+}
+
+function wzManualIpContinue() {
+  const ip = document.getElementById('wz-manual-ip')?.value.trim();
+  if (!ip) return;
+  const list = document.getElementById('wz-found-list');
+  list.innerHTML = `<div class="found-device-card selected" id="fdc-${ip}" onclick="wzSelectDevice('${ip}')">
+    <i class="bi bi-router text-primary me-2 fs-5"></i>
+    <div class="flex-grow-1"><strong>FRITZ!Box</strong><div class="small text-secondary">${escHtml(ip)}</div></div>
+    <i class="bi bi-check-circle-fill text-success fs-5 check-icon"></i>
+  </div>`;
+  wzSelectDevice(ip);
+  wzGo(2);
+}
+
+function wzSelectDevice(ip) {
+  wz.ip = ip;
+  document.querySelectorAll('.found-device-card').forEach(c => {
+    const isThis = c.id === 'fdc-' + ip;
+    c.classList.toggle('selected', isThis);
+    const icon = c.querySelector('.check-icon');
+    if (icon) icon.classList.toggle('d-none', !isThis);
+  });
+}
+
+// ── Step 2: Load VoIP clients ─────────────────────────────────────────────
+async function wzLoadClients() {
+  if (!wz.ip) { alert('Bitte zuerst eine FritzBox auswählen.'); return; }
+  const pw   = document.getElementById('wz-fb-pw').value;
+  const user = document.getElementById('wz-fb-user').value || 'admin';
+  if (!pw) { document.getElementById('wz-fb-pw').focus(); return; }
+
+  const btn = document.getElementById('btn-load-clients');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Lade Geräte…';
+
+  const status = document.getElementById('wz-clients-status');
+  status.innerHTML = '';
+
+  try {
+    const res = await fetch('/api/fritzbox/clients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip: wz.ip, password: pw, username: user }),
+    });
+    const data = await res.json();
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-plug me-1"></i>Verbinden &amp; Geräte laden';
+
+    if (!data.ok) {
+      status.innerHTML = `<div class="alert alert-danger small mb-0">
+        <i class="bi bi-x-circle me-1"></i>${escHtml(data.msg)}</div>`;
+      return;
+    }
+
+    // Build client cards for step 3
+    const cards = document.getElementById('wz-client-cards');
+    if (data.clients.length === 0) {
+      cards.innerHTML = `<div class="alert alert-info small">
+        <i class="bi bi-info-circle me-1"></i>
+        Keine IP-Telefone in der FritzBox gefunden.
+        Bitte zuerst ein <strong>IP-Telefon</strong> in der FritzBox anlegen:<br>
+        <a href="http://${escHtml(wz.ip)}/" target="_blank" class="text-info">
+        <i class="bi bi-box-arrow-up-right me-1"></i>FritzBox öffnen</a>
+        → Telefonie → Telefoniegeräte → Neues Gerät → Telefon (LAN/WLAN IP-Telefon)
+      </div>`;
+      document.getElementById('wz-sip-creds').classList.add('d-none');
+      document.getElementById('btn-wizard-setup').disabled = true;
+    } else {
+      // Build clickable client cards; auto-select first
+      cards.innerHTML = data.clients.map((c, i) => {
+        // ClientUsername is the actual SIP username set in FritzBox
+        const username = c.ClientUsername || c.ClientId || String(620 + i);
+        const label    = c.ClientId && c.ClientId !== c.ClientUsername
+          ? `${escHtml(c.ClientId)} (${escHtml(username)})`
+          : escHtml(username);
+        const reg = c.ClientRegistrar || wz.ip;
+        return `<div class="found-device-card ${i === 0 ? 'selected' : ''}" id="cdc-${i}"
+                     onclick="wzSelectClient(${c.index ?? i}, '${escHtml(username)}', this)">
+          <i class="bi bi-telephone-fill text-success me-2 fs-5"></i>
+          <div class="flex-grow-1">
+            <strong>${label}</strong>
+            <div class="small text-secondary">${escHtml(reg)} · Port 5060</div>
+          </div>
+          <i class="bi bi-check-circle-fill text-success fs-5 check-icon ${i === 0 ? '' : 'd-none'}"></i>
+        </div>`;
+      }).join('');
+
+      // Auto-select first
+      const first = data.clients[0];
+      wzSelectClient(first.index ?? 0,
+                     first.ClientUsername || first.ClientId || '620',
+                     null);
+    }
+
+    wzGo(3);
+  } catch (e) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-plug me-1"></i>Verbinden &amp; Geräte laden';
+    status.innerHTML = `<div class="alert alert-danger small mb-0">${escHtml(String(e))}</div>`;
+  }
+}
+
+function wzSelectClient(index, clientUsername, el) {
+  wz.clientIndex = index;
+  wz.clientId    = clientUsername;   // clientUsername IS the SIP username
+
+  // Update card highlight
+  document.querySelectorAll('.found-device-card[id^="cdc-"]').forEach(c => {
+    c.classList.remove('selected');
+    const ico = c.querySelector('.check-icon');
+    if (ico) ico.classList.add('d-none');
+  });
+  if (el) {
+    el.classList.add('selected');
+    const ico = el.querySelector('.check-icon');
+    if (ico) ico.classList.remove('d-none');
+  }
+
+  // Populate SIP credentials fields
+  document.getElementById('wz-sip-host-display').value = wz.ip;
+  document.getElementById('wz-sip-user-field').value   = clientUsername;
+  document.getElementById('wz-sip-pw-field').value     = '';   // user must enter their FritzBox-configured password
+  wz.sipPassword = '';
+  document.getElementById('wz-sip-creds').classList.remove('d-none');
+  document.getElementById('wz-sip-pw-field').focus();
+  wzCheckReady();
+}
+
+function wzCheckReady() {
+  const user = document.getElementById('wz-sip-user-field').value.trim();
+  const pw   = document.getElementById('wz-sip-pw-field').value;
+  document.getElementById('btn-wizard-setup').disabled = !(user && pw);
+}
+
+function wzTogglePw() {
+  const field = document.getElementById('wz-sip-pw-field');
+  const eye   = document.getElementById('wz-pw-eye');
+  if (field.type === 'password') {
+    field.type = 'text';
+    eye.className = 'bi bi-eye-slash';
+  } else {
+    field.type = 'password';
+    eye.className = 'bi bi-eye';
+  }
+}
+
+// ── Step 3: Save entered credentials and proceed ───────────────────────────
+async function wzSaveAndFinish() {
+  wz.clientId    = document.getElementById('wz-sip-user-field').value.trim();
+  wz.sipPassword = document.getElementById('wz-sip-pw-field').value;
+
+  if (!wz.clientId || !wz.sipPassword) {
+    document.getElementById('wz-setup-status').innerHTML =
+      '<div class="alert alert-warning small mb-0">Bitte Benutzername und Passwort eingeben.</div>';
+    return;
+  }
+
+  const btn = document.getElementById('btn-wizard-setup');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Speichere…';
+
+  try {
+    await fetch('/api/fritzbox/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip: wz.ip, client_id: wz.clientId, sip_password: wz.sipPassword }),
+    });
+    wzFinish();
+  } catch (e) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Speichern &amp; weiter';
+    document.getElementById('wz-setup-status').innerHTML =
+      `<div class="alert alert-danger small mb-0">${escHtml(String(e))}</div>`;
+  }
+}
+
+// ── Step 4: Finish ────────────────────────────────────────────────────────
+function wzFinish() {
+  document.getElementById('wz-done-msg').textContent =
+    `Zugangsdaten gespeichert. Verbinde jetzt als ${wz.clientId}@${wz.ip}.`;
+  document.getElementById('hidden-host').value = wz.ip;
+  document.getElementById('hidden-user').value = wz.clientId;
+  document.getElementById('hidden-pass').value = wz.sipPassword;
+  wzGo(4);
+}
+
+// ── SIP raw connection test ────────────────────────────────────────────────
+async function wzRunSipTest() {
+  const btn = document.getElementById('btn-sip-test');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Teste…';
+
+  // Show diag panel
+  document.getElementById('diag-panel').classList.remove('d-none');
+  appendDiag('info', `Starte SIP-Verbindungstest: ${wz.clientId}@${wz.ip}:5060`);
+
+  try {
+    const res = await fetch('/api/sip/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        host: wz.ip,
+        port: 5060,
+        username: wz.clientId,
+        password: wz.sipPassword,
+      }),
+    });
+    const data = await res.json();
+    // Steps are also emitted as sip_diag events by the server,
+    // but show a summary here in case socket is slow.
+    if (data.ok) {
+      appendDiag('success', 'Verbindungstest erfolgreich – Zugangsdaten korrekt!');
+    } else {
+      appendDiag('error', 'Verbindungstest fehlgeschlagen – Details in der Diagnose oben.');
+    }
+  } catch(e) {
+    appendDiag('error', 'Verbindungstest Fehler: ' + escHtml(String(e)));
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="bi bi-radar me-1"></i>Verbindungstest';
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────
+function genPassword(len = 16) {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#%';
+  return Array.from(crypto.getRandomValues(new Uint8Array(len)))
+    .map(b => chars[b % chars.length]).join('');
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Manual SIP test (reads from manual form fields) ───────────────────────
+async function runManualSipTest() {
+  const host = document.querySelector('[name="sip_host"]')?.value.trim();
+  const port = parseInt(document.querySelector('[name="sip_port"]')?.value || '5060');
+  const username = document.querySelector('[name="sip_username"]')?.value.trim();
+  const password = document.querySelector('[name="sip_password"]')?.value;
+
+  if (!host || !username || !password) {
+    appendDiag('warning', 'Bitte Host, Benutzername und Passwort eingeben.');
+    document.getElementById('diag-panel').classList.remove('d-none');
+    return;
+  }
+
+  const btn = document.getElementById('btn-manual-test');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Teste…';
+  document.getElementById('diag-panel').classList.remove('d-none');
+  appendDiag('info', `Starte SIP-Verbindungstest: ${username}@${host}:${port}`);
+
+  try {
+    const res = await fetch('/api/sip/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host, port, username, password }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      appendDiag('success', 'Verbindungstest erfolgreich – Zugangsdaten korrekt!');
+    } else {
+      appendDiag('error', 'Verbindungstest fehlgeschlagen – Details in der Diagnose oben.');
+    }
+  } catch(e) {
+    appendDiag('error', 'Verbindungstest Fehler: ' + escHtml(String(e)));
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="bi bi-radar me-1"></i>Verbindungstest';
+}
+
+// ── Manual form (collapsible) ─────────────────────────────────────────────
+function toggleManualForm() {
+  const body = document.getElementById('manual-form-body');
+  const chevron = document.getElementById('manual-chevron');
+  const open = body.classList.toggle('d-none');
+  chevron.className = 'bi text-secondary ' + (open ? 'bi-chevron-down' : 'bi-chevron-up');
+}
+
+function selectMode(mode) {
+  document.getElementById('mode-' + mode).checked = true;
+  document.querySelectorAll('.option-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById('mode-' + mode).closest('.option-card').classList.add('selected');
+  document.getElementById('info-fritzbox').classList.toggle('d-none', mode !== 'fritzbox');
+  document.getElementById('info-sip').classList.toggle('d-none', mode !== 'sip');
+}
+
+function showConnecting(btn) {
+  ['btn-connect-icon', 'btn-wz-conn-icon'].forEach(id => document.getElementById(id)?.classList.add('d-none'));
+  ['btn-connect-spinner', 'btn-wz-conn-spin'].forEach(id => document.getElementById(id)?.classList.remove('d-none'));
+  // Disable after a short delay so the browser can process the form submission first.
+  // Disabling synchronously in onclick can prevent form submission in some browsers.
+  setTimeout(() => { if (btn) btn.disabled = true; }, 100);
+  // Set flag so polling starts on the next page load (after form POST redirect)
+  sessionStorage.setItem('awaitingConnect', '1');
+}
+
+// ── Live diagnostics ──────────────────────────────────────────────────────
+function appendDiag(level, message, ts) {
+  const container = document.getElementById('diag-log');
+  const icons = {
+    info:    'bi-info-circle text-info',
+    success: 'bi-check-circle-fill text-success',
+    warning: 'bi-exclamation-triangle-fill text-warning',
+    error:   'bi-x-circle-fill text-danger',
+  };
+  const icon = icons[level] || 'bi-dot text-secondary';
+  const time = ts || new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const el = document.createElement('div');
+  el.className = 'diag-entry d-flex gap-2 py-1 px-1 border-bottom border-secondary border-opacity-25';
+  el.innerHTML = `<span class="diag-time text-secondary">${time}</span>`
+               + `<i class="bi ${icon} flex-shrink-0 mt-1"></i>`
+               + `<span class="small flex-grow-1">${escHtml(message)}</span>`;
+  container.appendChild(el);
+  container.scrollTop = container.scrollHeight;
+}
+
+function clearDiag() {
+  document.getElementById('diag-log').innerHTML = '';
+}
+
+socket.on('sip_diag', d => {
+  document.getElementById('diag-panel').classList.remove('d-none');
+  appendDiag(d.level, d.message, d.ts);
+});
+
+// ── Status polling ─────────────────────────────────────────────────────────
+// Reliable alternative to Socket.IO events from background threads.
+// Started whenever we're awaiting a connect result.
+let _pollTimer = null;
+let _reloadPending = false;
+
+function startStatusPolling() {
+  if (_pollTimer) return;
+  let attempts = 0;
+  const MAX = 40; // 40 × 2s = 80s max
+  _pollTimer = setInterval(async () => {
+    if (_reloadPending) { clearInterval(_pollTimer); return; }
+    attempts++;
+    if (attempts > MAX) {
+      clearInterval(_pollTimer);
+      sessionStorage.removeItem('awaitingConnect');
+      document.getElementById('diag-panel').classList.remove('d-none');
+      appendDiag('error', 'Zeitüberschreitung (80 s) – Verbindung nicht hergestellt. Bitte Diagnose prüfen.');
+      return;
+    }
+    try {
+      const r = await fetch('/api/status');
+      const d = await r.json();
+      if (d.phone && d.phone.active) {
+        clearInterval(_pollTimer);
+        _reloadPending = true;
+        sessionStorage.removeItem('awaitingConnect');
+        document.getElementById('diag-panel').classList.remove('d-none');
+        appendDiag('success', `Verbunden als ${d.phone.username}@${d.phone.host} – Seite wird neu geladen…`);
+        setTimeout(() => location.reload(), 1200);
+      }
+    } catch(e) { /* network hiccup, retry */ }
+  }, 2000);
+}
+
+// Start polling immediately if we navigated here after a connect action
+if (sessionStorage.getItem('awaitingConnect')) {
+  document.getElementById('diag-panel').classList.remove('d-none');
+  appendDiag('info', 'Verbindungsaufbau läuft – warte auf Bestätigung…');
+  startStatusPolling();
+}
+
+// Socket.IO phone_status as additional trigger (fires if events work)
+socket.on('phone_status', d => {
+  if (!sessionStorage.getItem('awaitingConnect')) return;
+  if (d.active && !_reloadPending) {
+    clearInterval(_pollTimer);
+    _reloadPending = true;
+    sessionStorage.removeItem('awaitingConnect');
+    appendDiag('success', 'Verbunden! Seite wird neu geladen…');
+    setTimeout(() => location.reload(), 1200);
+  }
+});
+</script>
+
+<style>
+/* ── Wizard steps ── */
+.wz-step-dot {
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.8rem; font-weight: 600; flex-shrink: 0;
+  background: var(--bs-secondary-bg); color: var(--bs-secondary-color);
+  border: 2px solid var(--bs-border-color);
+}
+.wz-step-dot.active { background: var(--bs-primary); color: #fff; border-color: var(--bs-primary); }
+.wz-step-dot.done   { background: var(--bs-success); color: #fff; border-color: var(--bs-success); }
+.wz-step-line {
+  flex: 1; height: 2px; background: var(--bs-border-color);
+}
+.wz-step-line.done  { background: var(--bs-success); }
+
+/* ── Device / client cards ── */
+.found-device-card {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: 8px; cursor: pointer; margin-bottom: 8px;
+  border: 2px solid var(--bs-border-color);
+  transition: border-color 0.15s, background 0.15s;
+}
+.found-device-card:hover   { border-color: var(--bs-primary); background: rgba(13,110,253,.06); }
+.found-device-card.selected { border-color: var(--bs-primary); background: rgba(13,110,253,.1); }
+
+/* ── Diagnostics ── */
+.diag-log-container { height: 260px; overflow-y: auto; font-size: 0.82rem; }
+.diag-entry { border-radius: 4px; }
+.diag-entry:hover { background: rgba(255,255,255,0.04); }
+.diag-time { font-size: 0.75rem; min-width: 58px; }
+</style>
+{% endblock %}

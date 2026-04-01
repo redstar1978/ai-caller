@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Benutzerverwaltung – AI-Caller Admin{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-9">
+    <h4 class="mb-1"><i class="bi bi-people me-2 text-primary"></i>Benutzerverwaltung</h4>
+    <p class="text-secondary mb-4">Benutzer anlegen, bearbeiten und Rollen zuweisen.</p>
+
+    <!-- Benutzer anlegen -->
+    <div class="card mb-4">
+      <div class="card-header"><h6 class="mb-0"><i class="bi bi-person-plus me-2"></i>Neuen Benutzer anlegen</h6></div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('admin_users_create') }}">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Benutzername</label>
+              <input type="text" name="username" class="form-control" required placeholder="benutzername">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Passwort <small class="text-secondary">(mind. 8 Zeichen)</small></label>
+              <input type="password" name="password" class="form-control" required minlength="8">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Rolle</label>
+              <select name="role" class="form-select">
+                <option value="user">Benutzer</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+              <button type="submit" class="btn btn-primary w-100">
+                <i class="bi bi-plus-circle me-1"></i>Anlegen
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Benutzerliste -->
+    <div class="card">
+      <div class="card-header"><h6 class="mb-0"><i class="bi bi-list-ul me-2"></i>Vorhandene Benutzer</h6></div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Benutzername</th>
+                <th>Rolle</th>
+                <th>Status</th>
+                <th>Erstellt</th>
+                <th class="text-end">Aktionen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in users %}
+              <tr>
+                <td>
+                  <i class="bi bi-person me-1 text-secondary"></i>{{ u.username }}
+                  {% if u.id == current_user.id %}
+                  <span class="badge bg-primary ms-1">Ich</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if u.role == 'admin' %}
+                  <span class="badge bg-warning text-dark"><i class="bi bi-shield-fill me-1"></i>Admin</span>
+                  {% else %}
+                  <span class="badge bg-secondary"><i class="bi bi-person me-1"></i>Benutzer</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if u.is_active %}
+                  <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Aktiv</span>
+                  {% else %}
+                  <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Gesperrt</span>
+                  {% endif %}
+                </td>
+                <td class="text-secondary small">{{ u.created_at[:10] }}</td>
+                <td class="text-end">
+                  <button class="btn btn-sm btn-outline-secondary"
+                          onclick="openEdit({{ u.id }}, '{{ u.username }}', '{{ u.role }}', {{ u.is_active }})">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                  {% if u.id != current_user.id %}
+                  <form method="post" action="{{ url_for('admin_users_delete', user_id=u.id) }}"
+                        class="d-inline" onsubmit="return confirm('Benutzer löschen?')">
+                    <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-center text-secondary py-3">Keine Benutzer vorhanden.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Benutzer bearbeiten</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" id="editForm">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Benutzername</label>
+            <input type="text" name="username" id="edit-username" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Neues Passwort <small class="text-secondary">(leer lassen = unverändert)</small></label>
+            <input type="password" name="password" class="form-control" minlength="8"
+                   placeholder="mind. 8 Zeichen">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Rolle</label>
+            <select name="role" id="edit-role" class="form-select">
+              <option value="user">Benutzer</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="is_active" id="edit-active" value="1">
+            <label class="form-check-label" for="edit-active">Konto aktiv</label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>Speichern</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openEdit(id, username, role, isActive) {
+  document.getElementById('editForm').action = `/admin/users/${id}/edit`;
+  document.getElementById('edit-username').value = username;
+  document.getElementById('edit-role').value = role;
+  document.getElementById('edit-active').checked = isActive === 1;
+  new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+</script>
+{% endblock %}

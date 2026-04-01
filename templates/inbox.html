@@ -1,0 +1,639 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – AI-Caller{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-4">
+
+  <!-- ── Phone status ── -->
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <span id="dash-dot" class="status-dot {% if status.active %}status-online{% else %}status-offline{% endif %}"></span>
+          <h6 class="mb-0">Telefonanschluss</h6>
+        </div>
+        <div id="dash-phone-info" class="small">
+          {% if status.active %}
+          <span class="text-success">Verbunden</span>
+          <span class="text-secondary ms-1">{{ status.username }}@{{ status.host }}</span>
+          {% else %}
+          <span class="text-secondary">Nicht verbunden</span>
+          {% if not status.username %}
+          <div class="mt-2">
+            <a href="{{ url_for('admin_phone') }}" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-plug me-1"></i>Einrichten
+            </a>
+          </div>
+          {% endif %}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Schedule status ── -->
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <i class="bi bi-clock text-primary"></i>
+          <h6 class="mb-0">Aktivzeit</h6>
+        </div>
+        <div id="dash-schedule" class="small">
+          {% if status.schedule_mode == 'always' %}
+          <span class="text-success"><i class="bi bi-infinity me-1"></i>Immer aktiv</span>
+          {% elif status.schedule_active %}
+          <span class="text-success"><i class="bi bi-check-circle me-1"></i>{{ status.schedule_reason }}</span>
+          {% else %}
+          <span class="text-secondary"><i class="bi bi-pause-circle me-1"></i>{{ status.schedule_reason }}</span>
+          {% endif %}
+          <div class="mt-1">
+            <a href="{{ url_for('admin_greeting') }}" class="text-secondary small">
+              <i class="bi bi-pencil me-1"></i>Zeitplan bearbeiten
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Current call / stats ── -->
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <i class="bi bi-telephone-fill text-warning"></i>
+          <h6 class="mb-0">Aktueller Anruf</h6>
+        </div>
+        <div id="dash-current-call" class="small text-secondary">
+          <i class="bi bi-dash"></i> Kein aktiver Anruf
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Voice Test Widget ───────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4 mt-1">
+  <div class="col-12">
+    <div class="card border-primary border-opacity-50" id="vt-card">
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <i class="bi bi-telephone-fill text-primary"></i>
+          <h6 class="mb-0">Testanruf (Browser)</h6>
+          <span class="badge bg-secondary ms-auto" id="vt-badge">Bereit</span>
+        </div>
+
+        <!-- idle state -->
+        <div id="vt-idle">
+          <button class="btn btn-primary" onclick="vtStart()">
+            <i class="bi bi-telephone-fill me-1"></i>Testanruf starten
+          </button>
+          <span class="text-secondary small ms-3">Simuliert einen vollständigen Anruf im Browser</span>
+        </div>
+
+        <!-- active call state (hidden initially) -->
+        <div id="vt-active" class="d-none">
+          <!-- transcript feed -->
+          <div id="vt-feed" class="vt-feed mb-3"></div>
+          <!-- controls -->
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <button id="vt-mic-btn" class="btn btn-success d-none" onclick="vtToggleMic()">
+              <i class="bi bi-mic-fill me-1"></i>Sprechen
+            </button>
+            <!-- mic level meter – visible during recording -->
+            <div id="vt-meter-wrap" class="d-none align-items-center gap-2">
+              <i class="bi bi-mic-fill text-danger"></i>
+              <canvas id="vt-meter" width="160" height="22" style="border-radius:4px"></canvas>
+              <span id="vt-db" class="text-secondary small" style="min-width:42px;font-variant-numeric:tabular-nums"></span>
+            </div>
+            <span id="vt-status-text" class="text-secondary small"></span>
+            <button id="vt-end-btn" class="btn btn-outline-danger btn-sm ms-auto d-none" onclick="vtEnd()">
+              <i class="bi bi-telephone-x me-1"></i>Auflegen
+            </button>
+          </div>
+        </div>
+
+        <div id="vt-error" class="mt-2 small text-danger d-none"></div>
+        <audio id="vt-audio" class="d-none"></audio>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+
+  <!-- ── Live log ── -->
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <h6 class="mb-0"><i class="bi bi-activity me-2 text-success"></i>Live-Log</h6>
+        <button class="btn btn-sm btn-outline-secondary py-0" onclick="clearLog()">
+          <i class="bi bi-trash"></i>
+        </button>
+      </div>
+      <div class="card-body p-0">
+        <div id="live-log" class="live-log-container p-2">
+          <div class="text-center text-secondary py-4 small" id="log-empty">
+            <i class="bi bi-hourglass me-1"></i>Warte auf Ereignisse…
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Inbox ── -->
+  <div class="col-lg-7">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h5 class="mb-0"><i class="bi bi-inbox-fill me-2 text-primary"></i>Nachrichten
+        {% if unread > 0 %}
+        <span class="badge bg-danger ms-1">{{ unread }}</span>
+        {% endif %}
+      </h5>
+      {% if unread > 0 %}
+      <form method="post" action="{{ url_for('mark_all_read') }}">
+        <button class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-check2-all me-1"></i>Alle gelesen
+        </button>
+      </form>
+      {% endif %}
+    </div>
+
+    {% if messages %}
+    <div class="list-group" id="inbox-list">
+      {% for msg in messages %}
+      <a href="{{ url_for('inbox_detail', inbox_id=msg.id) }}"
+         class="list-group-item list-group-item-action d-flex gap-3 py-3
+                {% if not msg.is_read %}unread-item{% endif %}">
+        <div class="call-icon rounded-circle d-flex align-items-center justify-content-center flex-shrink-0">
+          <i class="bi bi-telephone-inbound-fill"></i>
+        </div>
+        <div class="flex-grow-1 overflow-hidden">
+          <div class="d-flex justify-content-between">
+            <strong class="text-truncate">{{ msg.caller_number or 'Unbekannt' }}
+              {% if msg.caller_name %}<span class="text-secondary fw-normal">({{ msg.caller_name }})</span>{% endif %}
+            </strong>
+            <small class="text-secondary text-nowrap ms-2">{{ msg.created_at[:16].replace('T',' ') }}</small>
+          </div>
+          <p class="mb-0 small text-secondary text-truncate">{{ msg.body[:100] }}…</p>
+          {% if msg.duration %}
+          <small class="text-secondary"><i class="bi bi-clock me-1"></i>{{ msg.duration }}s</small>
+          {% endif %}
+        </div>
+        <div class="d-flex flex-column align-items-end gap-1 flex-shrink-0">
+          {% if not msg.is_read %}
+          <span class="badge bg-primary">Neu</span>
+          {% endif %}
+          {% if msg.callback_status == 'pending' %}
+          <span class="badge bg-warning text-dark"><i class="bi bi-clock me-1"></i>Rückruf</span>
+          {% elif msg.callback_status == 'calling' %}
+          <span class="badge bg-info text-dark"><i class="bi bi-telephone-outbound me-1"></i>Ruft an</span>
+          {% elif msg.callback_status == 'answered' %}
+          <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Beantwortet</span>
+          {% elif msg.callback_status == 'no_answer' %}
+          <span class="badge bg-secondary"><i class="bi bi-telephone-x me-1"></i>N/A</span>
+          {% elif msg.callback_status == 'failed' %}
+          <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Fehler</span>
+          {% endif %}
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-5 text-secondary" id="inbox-empty">
+      <i class="bi bi-inbox display-1"></i>
+      <p class="mt-3">Keine Nachrichten vorhanden.</p>
+      {% if not status.active %}
+      <a href="{{ url_for('admin_phone') }}" class="btn btn-primary mt-2">
+        <i class="bi bi-telephone me-1"></i>Telefonanschluss einrichten
+      </a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <div id="live-toast" class="toast align-items-center text-bg-primary border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body" id="live-toast-body">Neue Nachricht</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Live log ──────────────────────────────────────────────────────────────────
+const LOG_ICONS = {
+  call_ringing:    { icon: 'bi-telephone-inbound',      cls: 'text-warning',  label: 'Eingehend' },
+  call_answered:   { icon: 'bi-telephone-fill',          cls: 'text-success',  label: 'Angenommen' },
+  call_rejected:   { icon: 'bi-telephone-x-fill',        cls: 'text-secondary',label: 'Abgelehnt' },
+  call_transcript: { icon: 'bi-chat-left-dots',          cls: 'text-info',     label: '' },
+  call_processing: { icon: 'bi-cpu',                     cls: 'text-primary',  label: 'Verarbeite' },
+  call_ended:      { icon: 'bi-telephone-minus-fill',    cls: 'text-secondary',label: 'Beendet' },
+  call_error:      { icon: 'bi-exclamation-triangle-fill',cls:'text-danger',   label: 'Fehler' },
+  new_inbox:       { icon: 'bi-inbox-fill',              cls: 'text-primary',  label: 'Nachricht' },
+};
+
+let activeCallId = null;
+
+function appendLog(event, data, prepend = false) {
+  const container = document.getElementById('live-log');
+  const empty = document.getElementById('log-empty');
+  if (empty) empty.remove();
+
+  const meta = LOG_ICONS[event] || { icon: 'bi-dot', cls: 'text-secondary', label: event };
+
+  let detail = '';
+  if (event === 'call_ringing' || event === 'call_answered' || event === 'call_rejected') {
+    const name = data.caller_name ? ` (${esc(data.caller_name)})` : '';
+    detail = `<strong>${esc(data.caller || '?')}</strong>${name}`;
+    if (data.reason) detail += ` <span class="text-secondary">– ${esc(data.reason)}</span>`;
+  } else if (event === 'call_transcript') {
+    const dir = data.direction === 'ai'
+      ? `<span class="badge bg-primary bg-opacity-25 text-primary me-1">KI</span>`
+      : `<span class="badge bg-secondary bg-opacity-25 text-secondary me-1">Anrufer</span>`;
+    detail = dir + `<em>${esc(data.text || '')}</em>`;
+  } else if (event === 'call_processing') {
+    const steps = { stt: 'Spracherkennung…', llm: 'KI denkt…', tts: 'Sprachausgabe…' };
+    detail = `<span class="text-secondary">${steps[data.step] || data.step}</span>`;
+  } else if (event === 'call_ended') {
+    const name = data.caller_name ? ` (${esc(data.caller_name)})` : '';
+    detail = `${esc(data.caller || '')}${name} · ${data.duration}s`;
+    if (data.summary) detail += `<br><small class="text-secondary">${esc(data.summary)}</small>`;
+  } else if (event === 'call_error') {
+    detail = `<span class="text-danger">${esc(data.error || '')}</span>`;
+  } else if (event === 'new_inbox') {
+    detail = `<a href="/inbox/${data.id}" class="text-primary">${esc(data.subject || 'Neue Nachricht')}</a>`;
+  }
+
+  const el = document.createElement('div');
+  el.className = 'log-entry d-flex gap-2 py-1 px-1 border-bottom border-secondary border-opacity-25';
+  el.dataset.callId = data.call_id || '';
+  el.innerHTML = `
+    <span class="log-time text-secondary">${data.ts || data.time || ''}</span>
+    <i class="bi ${meta.icon} ${meta.cls} flex-shrink-0 mt-1"></i>
+    <div class="flex-grow-1 overflow-hidden small">${detail}</div>`;
+
+  if (prepend) {
+    container.insertBefore(el, container.firstChild);
+  } else {
+    container.appendChild(el);
+    container.scrollTop = container.scrollHeight;
+  }
+}
+
+function clearLog() {
+  const c = document.getElementById('live-log');
+  c.innerHTML = '<div class="text-center text-secondary py-4 small" id="log-empty"><i class="bi bi-hourglass me-1"></i>Warte auf Ereignisse…</div>';
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Current call display ──────────────────────────────────────────────────────
+function setCurrentCall(data) {
+  const el = document.getElementById('dash-current-call');
+  const name = data.caller_name ? ` <span class="text-secondary">(${esc(data.caller_name)})</span>` : '';
+  el.innerHTML = `
+    <span class="status-dot status-online me-1" style="width:8px;height:8px"></span>
+    <strong>${esc(data.caller || '?')}</strong>${name}
+    <span class="badge bg-warning text-dark ms-1">Aktiv</span>`;
+  activeCallId = data.call_id;
+}
+
+function clearCurrentCall() {
+  document.getElementById('dash-current-call').innerHTML =
+    '<i class="bi bi-dash"></i> Kein aktiver Anruf';
+  activeCallId = null;
+}
+
+// ── Socket events ─────────────────────────────────────────────────────────────
+socket.on('call_ringing',    d => { appendLog('call_ringing', d);    setCurrentCall(d); showToast(`📞 Eingehend: ${d.caller}`, 'warning'); });
+socket.on('call_answered',   d => { appendLog('call_answered', d);   setCurrentCall(d); });
+socket.on('call_rejected',   d => { appendLog('call_rejected', d);   clearCurrentCall(); });
+socket.on('call_transcript', d => { appendLog('call_transcript', d); });
+socket.on('call_processing', d => { appendLog('call_processing', d); });
+socket.on('call_ended',      d => { appendLog('call_ended', d);      clearCurrentCall(); setTimeout(() => location.reload(), 2000); });
+socket.on('call_error',      d => { appendLog('call_error', d);      clearCurrentCall(); });
+socket.on('new_inbox',       d => { appendLog('new_inbox', d);       showToast(`Neue Nachricht von ${d.caller}`, 'primary'); });
+socket.on('phone_status',    d => { updatePhoneStatus(d.active, d.username, d.host); });
+socket.on('callback_status', d => {
+  // Update badge on the inbox list item if it's visible
+  const statusLabels = {
+    calling:   ['info',    'bi-telephone-outbound', 'Ruft an'],
+    pending:   ['warning', 'bi-clock',              'Rückruf'],
+    answered:  ['success', 'bi-check-circle',       'Beantwortet'],
+    no_answer: ['secondary','bi-telephone-x',       'N/A'],
+    failed:    ['danger',  'bi-x-circle',           'Fehler'],
+  };
+  const m = statusLabels[d.status];
+  if (m) showToast(`Rückruf ${d.status === 'answered' ? 'beantwortet' : d.status}`, m[0]);
+});
+
+// Replay history from server on connect
+socket.on('log_replay', entry => {
+  appendLog(entry.event, { ...entry.data, ts: entry.ts }, false);
+});
+
+function showToast(msg, type = 'primary') {
+  const el = document.getElementById('live-toast');
+  const body = document.getElementById('live-toast-body');
+  if (!el) return;
+  body.textContent = msg;
+  el.className = `toast align-items-center text-bg-${type} border-0`;
+  new bootstrap.Toast(el, { delay: 5000 }).show();
+}
+</script>
+
+<!-- ── Voice Test JS ───────────────────────────────────────────────────────── -->
+<script>
+let _vtCallId = null, _vtRecorder = null, _vtChunks = [], _vtRecording = false;
+let _vtAudioCtx = null;       // unlocked on first user click
+let _vtAnalyser = null;       // AnalyserNode for mic level meter
+let _vtMeterRaf = null;       // requestAnimationFrame handle
+
+// AudioContext must be created / resumed synchronously inside a user-gesture
+// handler (before any await).  Once unlocked it can play audio at any time.
+function _vtUnlockAudio() {
+  if (!_vtAudioCtx) {
+    _vtAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (_vtAudioCtx.state === 'suspended') _vtAudioCtx.resume();
+}
+
+async function _vtPlayArrayBuffer(arrayBuf) {
+  try {
+    const decoded = await _vtAudioCtx.decodeAudioData(arrayBuf);
+    return new Promise(resolve => {
+      const src = _vtAudioCtx.createBufferSource();
+      src.buffer = decoded;
+      src.connect(_vtAudioCtx.destination);
+      src.onended = resolve;
+      src.start();
+    });
+  } catch(e) {
+    console.warn('vtPlay error:', e);
+  }
+}
+
+// ── Start the test call ────────────────────────────────────────────────────
+async function vtStart() {
+  _vtUnlockAudio();   // ← synchronous, must be first (before any await)
+  vtShowError('');
+  vtBadge('Verbinde…', 'warning');
+  vtStatus('Begrüßungsansage wird generiert…');
+  document.getElementById('vt-idle').classList.add('d-none');
+  document.getElementById('vt-active').classList.remove('d-none');
+  document.getElementById('vt-end-btn').classList.remove('d-none');
+
+  try {
+    const resp = await fetch('/api/voice-test/start', { method: 'POST' });
+    if (!resp.ok) {
+      const j = await resp.json().catch(()=>({}));
+      vtFatal(j.error || `Fehler ${resp.status}`); return;
+    }
+    _vtCallId = parseInt(resp.headers.get('X-Call-Id'));
+    const text = decodeURIComponent(resp.headers.get('X-Text') || '');
+    vtFeedAdd('ai', text);
+    vtBadge('Aktiv', 'success');
+    vtStatus('KI spricht…');
+    const buf = await resp.arrayBuffer();
+    await _vtPlayArrayBuffer(buf);
+    vtEnableSpeak();
+  } catch(e) { vtFatal('Netzwerkfehler: ' + e.message); }
+}
+
+// ── Toggle mic recording ───────────────────────────────────────────────────
+async function vtToggleMic() {
+  if (_vtRecording) { vtStopRecording(); } else { await vtStartRecording(); }
+}
+
+async function vtStartRecording() {
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch(e) { vtShowError('Mikrofon-Zugriff verweigert: ' + e.message); return; }
+
+  // ── Wire AnalyserNode for level meter ──────────────────────────────────
+  const srcNode = _vtAudioCtx.createMediaStreamSource(stream);
+  _vtAnalyser = _vtAudioCtx.createAnalyser();
+  _vtAnalyser.fftSize = 256;
+  srcNode.connect(_vtAnalyser);
+  _vtMeterStart();
+
+  _vtChunks = [];
+  // Prefer ogg/opus (best PyAV compat), fall back to webm/opus, then default
+  const mimeType = MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+    ? 'audio/ogg;codecs=opus'
+    : MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus' : '';
+  _vtRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+  _vtRecorder.ondataavailable = e => { if (e.data.size > 0) _vtChunks.push(e.data); };
+  _vtRecorder.onstop = vtSendTurn;
+  _vtRecorder.start(100);
+  _vtRecording = true;
+
+  const btn = document.getElementById('vt-mic-btn');
+  btn.innerHTML = '<i class="bi bi-stop-fill me-1"></i>Fertig';
+  btn.className = 'btn btn-danger';
+  document.getElementById('vt-meter-wrap').classList.replace('d-none','d-flex');
+  vtStatus('Aufnahme läuft…');
+  vtBadge('Aufnahme', 'danger');
+}
+
+function vtStopRecording() {
+  _vtRecording = false;
+  _vtMeterStop();
+  _vtRecorder.stream.getTracks().forEach(t => t.stop());
+  _vtRecorder.stop();
+  document.getElementById('vt-mic-btn').classList.add('d-none');
+  document.getElementById('vt-meter-wrap').classList.replace('d-flex','d-none');
+}
+
+// ── Level meter drawing ────────────────────────────────────────────────────
+function _vtMeterStart() {
+  const canvas = document.getElementById('vt-meter');
+  const ctx2d  = canvas.getContext('2d');
+  const buf    = new Uint8Array(_vtAnalyser.frequencyBinCount);
+  let peak = 0, peakHold = 0;
+
+  function draw() {
+    _vtMeterRaf = requestAnimationFrame(draw);
+    _vtAnalyser.getByteTimeDomainData(buf);
+
+    // RMS over buffer
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) {
+      const v = (buf[i] - 128) / 128;
+      sum += v * v;
+    }
+    const rms  = Math.sqrt(sum / buf.length);
+    const db   = rms > 0 ? 20 * Math.log10(rms) : -60;
+    const norm = Math.max(0, Math.min(1, (db + 60) / 60));  // −60 dB → 0 dBFS
+
+    // Peak hold (decay)
+    if (norm > peak) peak = norm;
+    peakHold++;
+    if (peakHold > 30) { peak = Math.max(0, peak - 0.01); }
+
+    // Draw
+    const W = canvas.width, H = canvas.height;
+    ctx2d.clearRect(0, 0, W, H);
+
+    // Background
+    ctx2d.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx2d.roundRect(0, 0, W, H, 4);
+    ctx2d.fill();
+
+    // Gradient bar
+    const grad = ctx2d.createLinearGradient(0, 0, W, 0);
+    grad.addColorStop(0,    '#198754');  // green
+    grad.addColorStop(0.65, '#ffc107');  // yellow
+    grad.addColorStop(1,    '#dc3545');  // red
+    ctx2d.fillStyle = grad;
+    ctx2d.fillRect(0, 0, norm * W, H);
+
+    // Peak marker
+    const px = peak * W;
+    ctx2d.fillStyle = '#fff';
+    ctx2d.fillRect(px - 2, 0, 3, H);
+
+    // dB label
+    document.getElementById('vt-db').textContent =
+      db > -60 ? db.toFixed(1) + ' dB' : '–∞ dB';
+  }
+  draw();
+}
+
+function _vtMeterStop() {
+  if (_vtMeterRaf) { cancelAnimationFrame(_vtMeterRaf); _vtMeterRaf = null; }
+  // Clear canvas
+  const canvas = document.getElementById('vt-meter');
+  if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  const dbEl = document.getElementById('vt-db');
+  if (dbEl) dbEl.textContent = '';
+}
+
+// ── Send recorded audio, get AI response ──────────────────────────────────
+async function vtSendTurn() {
+  vtStatus('Spracherkennung läuft…');
+  vtBadge('STT…', 'warning');
+  const mimeType = _vtChunks[0]?.type || 'audio/webm';
+  const blob = new Blob(_vtChunks, { type: mimeType });
+
+  try {
+    const resp = await fetch('/api/voice-test/turn', {
+      method: 'POST',
+      headers: { 'Content-Type': mimeType, 'X-Call-Id': String(_vtCallId) },
+      body: blob,
+    });
+
+    const ct = resp.headers.get('Content-Type') || '';
+    if (!resp.ok || ct.includes('json')) {
+      const j = await resp.json().catch(()=>({}));
+      vtShowError(j.error || `Fehler ${resp.status}`);
+      vtEnableSpeak(); return;
+    }
+
+    const callerText = decodeURIComponent(resp.headers.get('X-Caller-Text') || '');
+    const aiText     = decodeURIComponent(resp.headers.get('X-AI-Text') || '');
+    const endCall    = resp.headers.get('X-End-Call') === '1';
+    if (callerText) vtFeedAdd('user', callerText);
+    if (aiText)     vtFeedAdd('ai',   aiText);
+
+    vtStatus('KI spricht…');
+    vtBadge('Aktiv', 'success');
+    const buf = await resp.arrayBuffer();
+    await _vtPlayArrayBuffer(buf);
+
+    if (endCall) { await vtEnd(); } else { vtEnableSpeak(); }
+  } catch(e) { vtShowError('Netzwerkfehler: ' + e.message); vtEnableSpeak(); }
+}
+
+// ── End the call ──────────────────────────────────────────────────────────
+async function vtEnd() {
+  document.getElementById('vt-mic-btn').classList.add('d-none');
+  document.getElementById('vt-end-btn').classList.add('d-none');
+  if (_vtRecording) vtStopRecording();
+  vtStatus('Gespräch wird gespeichert…');
+  vtBadge('Beendet', 'secondary');
+
+  try {
+    const resp = await fetch('/api/voice-test/end', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ call_id: _vtCallId }),
+    });
+    const d = await resp.json();
+    vtStatus(`Anruf beendet (${d.duration}s) – als Nachricht gespeichert.`);
+    if (d.summary) vtFeedAdd('summary', d.summary);
+  } catch(e) { vtStatus('Anruf beendet.'); }
+
+  _vtCallId = null;
+  setTimeout(() => {
+    document.getElementById('vt-active').classList.add('d-none');
+    document.getElementById('vt-idle').classList.remove('d-none');
+    document.getElementById('vt-feed').innerHTML = '';
+    vtBadge('Bereit', 'secondary');
+    vtStatus('');
+  }, 4000);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function vtEnableSpeak() {
+  vtStatus('Bitte sprechen, dann "Fertig" klicken.');
+  vtBadge('Aktiv', 'success');
+  const btn = document.getElementById('vt-mic-btn');
+  btn.innerHTML = '<i class="bi bi-mic-fill me-1"></i>Sprechen';
+  btn.className = 'btn btn-success';
+  btn.classList.remove('d-none');
+}
+
+function vtFeedAdd(role, text) {
+  const feed = document.getElementById('vt-feed');
+  const el = document.createElement('div');
+  el.className = 'vt-bubble ' + role;
+  const icon = role === 'ai' ? 'bi-robot' : role === 'user' ? 'bi-person-fill' : 'bi-card-text';
+  el.innerHTML = `<i class="bi ${icon} me-1"></i>${esc(text)}`;
+  feed.appendChild(el);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function vtBadge(text, color) {
+  const b = document.getElementById('vt-badge');
+  b.textContent = text; b.className = `badge bg-${color} ms-auto`;
+}
+function vtStatus(text) { document.getElementById('vt-status-text').textContent = text; }
+function vtShowError(msg) {
+  const el = document.getElementById('vt-error');
+  el.textContent = msg; el.classList.toggle('d-none', !msg);
+}
+function vtFatal(msg) {
+  vtShowError(msg); vtBadge('Fehler', 'danger'); vtStatus('');
+  document.getElementById('vt-active').classList.add('d-none');
+  document.getElementById('vt-idle').classList.remove('d-none');
+}
+</script>
+
+<style>
+.live-log-container {
+  height: 420px;
+  overflow-y: auto;
+  font-size: 0.82rem;
+}
+.log-entry { transition: background 0.2s; border-radius: 4px; }
+.log-entry:hover { background: rgba(255,255,255,0.04); }
+.log-time { font-size: 0.75rem; min-width: 52px; }
+/* Voice test */
+.vt-feed { max-height: 160px; overflow-y: auto; }
+.vt-bubble { font-size: 0.83rem; padding: 4px 8px; margin-bottom: 4px; border-radius: 6px; }
+.vt-bubble.ai      { background: rgba(13,110,253,0.1); color: var(--bs-body-color); }
+.vt-bubble.user    { background: rgba(255,255,255,0.07); color: var(--bs-body-color); }
+.vt-bubble.summary { background: rgba(25,135,84,0.1); font-style: italic; }
+#vt-meter { display: block; }
+</style>
+{% endblock %}

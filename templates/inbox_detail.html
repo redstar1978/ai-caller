@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Nachricht – AI-Caller{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+  <a href="{{ url_for('index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Zurück
+  </a>
+</div>
+
+{% if entry %}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <div>
+      <h5 class="mb-0">{{ entry.subject }}</h5>
+      <small class="text-secondary">
+        <i class="bi bi-calendar3 me-1"></i>{{ entry.created_at[:16].replace('T',' ') }}
+        {% if entry.duration %}&nbsp;·&nbsp;<i class="bi bi-clock me-1"></i>{{ entry.duration }}s{% endif %}
+        {% if entry.caller_number %}&nbsp;·&nbsp;<i class="bi bi-telephone me-1"></i>{{ entry.caller_number }}{% endif %}
+      </small>
+    </div>
+    <form method="post" action="{{ url_for('delete_message', inbox_id=entry.id) }}">
+      <button class="btn btn-sm btn-outline-danger"
+              onclick="return confirm('Nachricht löschen?')">
+        <i class="bi bi-trash"></i>
+      </button>
+    </form>
+  </div>
+  <div class="card-body">
+    <h6 class="text-secondary">Zusammenfassung</h6>
+    <p>{{ entry.body }}</p>
+  </div>
+</div>
+
+{% if call_msgs %}
+<div class="card mb-3">
+  <div class="card-header"><h6 class="mb-0"><i class="bi bi-chat-dots me-2"></i>Gesprächsverlauf</h6></div>
+  <div class="card-body p-0">
+    <div class="conversation-log p-3">
+      {% for m in call_msgs %}
+      {% if m.direction == 'system' %}
+      <div class="d-flex align-items-center gap-2 my-3 text-secondary small">
+        <hr class="flex-grow-1 m-0">
+        <span><i class="bi bi-telephone-outbound me-1"></i>{{ m.content }}</span>
+        <hr class="flex-grow-1 m-0">
+      </div>
+      {% else %}
+      <div class="d-flex mb-3 {% if m.direction == 'ai' %}flex-row-reverse{% endif %}">
+        <div class="chat-bubble {% if m.direction == 'ai' %}chat-ai{% else %}chat-caller{% endif %}">
+          <small class="d-block text-secondary mb-1">
+            {% if m.direction == 'ai' %}<i class="bi bi-robot me-1"></i>KI
+            {% else %}<i class="bi bi-person me-1"></i>Anrufer{% endif %}
+          </small>
+          {{ m.content }}
+        </div>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Reply / Callback ──────────────────────────────────────────── -->
+<div class="card mb-3" id="reply-card">
+  <div class="card-header d-flex align-items-center gap-2">
+    <i class="bi bi-reply-fill text-primary"></i>
+    <h6 class="mb-0">Antworten &amp; Rückruf</h6>
+    {% set cs = entry.callback_status %}
+    {% if cs == 'pending' %}
+      <span class="badge bg-warning text-dark ms-auto"><i class="bi bi-clock me-1"></i>Rückruf ausstehend</span>
+    {% elif cs == 'calling' %}
+      <span class="badge bg-info text-dark ms-auto"><i class="bi bi-telephone-outbound me-1"></i>Ruft an…</span>
+    {% elif cs == 'answered' %}
+      <span class="badge bg-success ms-auto"><i class="bi bi-check-circle me-1"></i>Rückruf erledigt</span>
+    {% elif cs == 'no_answer' %}
+      <span class="badge bg-secondary ms-auto"><i class="bi bi-telephone-x me-1"></i>Nicht abgehoben</span>
+    {% elif cs == 'failed' %}
+      <span class="badge bg-danger ms-auto"><i class="bi bi-x-circle me-1"></i>Fehler</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+
+    {% if entry.callback_status == 'answered' and entry.callback_result %}
+    <!-- Caller's response to callback -->
+    <div class="alert alert-success small mb-3">
+      <strong><i class="bi bi-person-check me-1"></i>Antwort des Anrufers:</strong><br>
+      {{ entry.callback_result }}
+    </div>
+    {% endif %}
+
+    {% if entry.callback_status in ('failed', 'no_answer') and entry.callback_result %}
+    <div class="alert alert-warning small mb-3">
+      <i class="bi bi-exclamation-triangle me-1"></i>{{ entry.callback_result }}
+    </div>
+    {% endif %}
+
+    {% if entry.reply_text %}
+    <div class="alert alert-secondary small mb-3">
+      <strong><i class="bi bi-chat-quote me-1"></i>Gesendete Antwort:</strong><br>
+      {{ entry.reply_text }}
+    </div>
+    {% endif %}
+
+    {% if entry.callback_status not in ('calling', 'pending') %}
+    <!-- Reply form -->
+    <form method="post" action="{{ url_for('inbox_reply', inbox_id=entry.id) }}">
+      <label class="form-label fw-semibold">
+        Antwort an {{ entry.caller_name or entry.caller_number }} senden:
+      </label>
+      <textarea name="reply_text" class="form-control mb-2" rows="3"
+                placeholder="Antworttext eingeben – die KI ruft den Anrufer zurück und liest die Nachricht vor…"
+                required>{% if entry.reply_text %}{{ entry.reply_text }}{% endif %}</textarea>
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-telephone-outbound me-1"></i>Jetzt zurückrufen
+      </button>
+    </form>
+    {% else %}
+    <div id="callback-live" class="d-flex align-items-center gap-2 text-secondary">
+      <span class="spinner-border spinner-border-sm"></span>
+      <span id="callback-live-text">
+        {% if entry.callback_status == 'pending' %}Rückruf wird vorbereitet…
+        {% else %}Ruf an {{ entry.caller_number }}…{% endif %}
+      </span>
+    </div>
+    {% endif %}
+
+    <!-- Telegram instructions -->
+    <hr class="my-3">
+    <div class="small text-secondary">
+      <i class="bi bi-telegram me-1 text-info"></i>
+      <strong>Via Telegram antworten:</strong>
+      Antworte direkt auf die Benachrichtigungs-Nachricht deines Bots —
+      die KI erkennt die Antwort automatisch und ruft den Anrufer innerhalb von 60 Sekunden zurück.
+    </div>
+  </div>
+</div>
+
+{% else %}
+<div class="alert alert-warning">Nachricht nicht gefunden.</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Poll callback status if currently calling or pending
+(function() {
+  const inboxId = {{ entry.id if entry else 'null' }};
+  const initialStatus = "{{ entry.callback_status if entry else '' }}";
+  if (!inboxId || !['pending','calling'].includes(initialStatus)) return;
+
+  const liveText = document.getElementById('callback-live-text');
+  const liveDiv  = document.getElementById('callback-live');
+
+  async function poll() {
+    try {
+      const r = await fetch(`/api/callback/status/${inboxId}`);
+      const d = await r.json();
+      const s = d.callback_status;
+      if (s === 'calling') {
+        if (liveText) liveText.textContent = 'Ruf an…';
+        setTimeout(poll, 3000);
+      } else if (s === 'answered') {
+        location.reload();
+      } else if (s === 'no_answer') {
+        location.reload();
+      } else if (s === 'failed') {
+        location.reload();
+      } else {
+        setTimeout(poll, 3000);
+      }
+    } catch(e) {
+      setTimeout(poll, 5000);
+    }
+  }
+  setTimeout(poll, 3000);
+})();
+</script>
+{% endblock %}

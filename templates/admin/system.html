@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}System & Darstellung – AI-Caller Admin{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-9">
+    <h4 class="mb-1"><i class="bi bi-gear me-2 text-primary"></i>System & Darstellung</h4>
+    <p class="text-secondary mb-4">Zwei-Faktor-Authentifizierung und Footer-Einstellungen.</p>
+
+    {% if saved %}
+    <div class="alert alert-success alert-dismissible fade show">
+      <i class="bi bi-check-circle me-2"></i>Einstellungen gespeichert.
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+
+    <form method="post">
+
+      <!-- 2FA -->
+      <div class="card mb-4">
+        <div class="card-header"><h6 class="mb-0"><i class="bi bi-shield-lock me-2"></i>Zwei-Faktor-Authentifizierung</h6></div>
+        <div class="card-body">
+          <div class="alert alert-info small mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            Wenn aktiviert, erhalten Benutzer beim Login einen einmaligen 6-stelligen Code per Telegram oder E-Mail.
+            Der Code ist 10 Minuten gültig. Mit „Angemeldet bleiben" wird die 2FA für 3 Monate übersprungen.
+          </div>
+
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" name="two_factor_enabled"
+                   id="chk-2fa" role="switch"
+                   {% if cfg.two_factor_enabled == 'true' %}checked{% endif %}>
+            <label class="form-check-label fw-semibold" for="chk-2fa">
+              Zwei-Faktor-Authentifizierung aktivieren
+            </label>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label fw-semibold">Kanal für den Code</label>
+            <div class="btn-group d-block" role="group">
+              <input type="radio" class="btn-check" name="two_factor_channel" value="telegram"
+                     id="ch-telegram" {% if cfg.two_factor_channel != 'email' %}checked{% endif %}>
+              <label class="btn btn-outline-info" for="ch-telegram">
+                <i class="bi bi-telegram me-1"></i>Telegram
+              </label>
+              <input type="radio" class="btn-check" name="two_factor_channel" value="email"
+                     id="ch-email" {% if cfg.two_factor_channel == 'email' %}checked{% endif %}>
+              <label class="btn btn-outline-secondary" for="ch-email">
+                <i class="bi bi-envelope me-1"></i>E-Mail
+              </label>
+            </div>
+            <small class="text-secondary d-block mt-1">
+              Telegram und E-Mail müssen unter
+              <a href="{{ url_for('admin_notifications') }}">Benachrichtigungen</a> konfiguriert sein.
+            </small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="card mb-4">
+        <div class="card-header"><h6 class="mb-0"><i class="bi bi-layout-text-window-reverse me-2"></i>Footer</h6></div>
+        <div class="card-body">
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Footer-Text</label>
+              <input type="text" name="footer_text" class="form-control"
+                     value="{{ cfg.footer_text or 'AI-Caller' }}" maxlength="120"
+                     oninput="updatePreview()">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Logo-Höhe (px)</label>
+              <div class="d-flex align-items-center gap-2">
+                <input type="range" name="footer_logo_size" id="logo-size-range"
+                       min="20" max="120" value="{{ cfg.footer_logo_size or '40' }}"
+                       oninput="document.getElementById('logo-size-val').textContent=this.value; updatePreview()"
+                       class="form-range">
+                <span id="logo-size-val" class="text-secondary small">{{ cfg.footer_logo_size or '40' }}</span>px
+              </div>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="footer_show_version"
+                       id="chk-ver" {% if cfg.footer_show_version == 'true' %}checked{% endif %}
+                       onchange="updatePreview()">
+                <label class="form-check-label" for="chk-ver">Version anzeigen</label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Logo selection -->
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Logo auswählen</label>
+            <div class="d-flex flex-wrap gap-2">
+              <div class="form-check">
+                <input class="btn-check" type="radio" name="footer_logo_src"
+                       id="logo-none" value=""
+                       {% if not cfg.footer_logo_src %}checked{% endif %}
+                       onchange="updatePreview()">
+                <label class="btn btn-sm btn-outline-secondary" for="logo-none">
+                  <i class="bi bi-x-circle me-1"></i>Kein Logo
+                </label>
+              </div>
+              <div class="form-check">
+                <input class="btn-check" type="radio" name="footer_logo_src"
+                       id="logo-default" value="/static/img/logo.png"
+                       {% if cfg.footer_logo_src == '/static/img/logo.png' %}checked{% endif %}
+                       onchange="updatePreview()">
+                <label class="btn btn-sm btn-outline-primary" for="logo-default">
+                  <i class="bi bi-image me-1"></i>Standard-Logo
+                </label>
+              </div>
+            </div>
+            <div class="mt-2">
+              <label class="form-label small">Oder eigene Logo-URL:</label>
+              <input type="text" id="custom-logo-url" class="form-control form-control-sm"
+                     placeholder="https://example.com/logo.png"
+                     value="{% if cfg.footer_logo_src and cfg.footer_logo_src != '/static/img/logo.png' %}{{ cfg.footer_logo_src }}{% endif %}"
+                     oninput="setCustomLogo(this.value)">
+            </div>
+          </div>
+
+          <!-- Preview -->
+          <div class="border rounded p-2 bg-body-secondary text-center small text-secondary d-flex align-items-center justify-content-center gap-2" id="footer-preview">
+            <img id="prev-logo" src="{{ cfg.footer_logo_src or '' }}"
+                 style="height:{{ cfg.footer_logo_size or 40 }}px;opacity:.7;{% if not cfg.footer_logo_src %}display:none{% endif %}">
+            <span id="prev-text">{{ cfg.footer_text or 'AI-Caller' }}{% if cfg.footer_show_version == 'true' %} · v{{ app_version }}{% endif %}</span>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-save me-1"></i>Speichern
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updatePreview() {
+  const text = document.querySelector('[name="footer_text"]').value;
+  const size = document.getElementById('logo-size-range').value;
+  const showVer = document.getElementById('chk-ver').checked;
+  const logoSel = document.querySelector('input[name="footer_logo_src"]:checked');
+  const img = document.getElementById('prev-logo');
+  const span = document.getElementById('prev-text');
+  span.textContent = text + (showVer ? ' · v{{ app_version }}' : '');
+  if (logoSel && logoSel.value) {
+    img.src = logoSel.value;
+    img.style.display = '';
+    img.style.height = size + 'px';
+  } else {
+    img.style.display = 'none';
+  }
+}
+
+function setCustomLogo(val) {
+  // Deselect radio buttons and use custom URL
+  document.querySelectorAll('input[name="footer_logo_src"]').forEach(r => r.checked = false);
+  // Set hidden value via a hidden input
+  let hidden = document.getElementById('footer-logo-custom-hidden');
+  if (!hidden) {
+    hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.name = 'footer_logo_src';
+    hidden.id = 'footer-logo-custom-hidden';
+    document.querySelector('form').appendChild(hidden);
+  }
+  hidden.value = val;
+  const img = document.getElementById('prev-logo');
+  if (val) { img.src = val; img.style.display = ''; } else { img.style.display = 'none'; }
+}
+</script>
+{% endblock %}

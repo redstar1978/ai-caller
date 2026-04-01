@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Anrufliste – AI-Caller{% endblock %}
+
+{% block content %}
+<h4 class="mb-3"><i class="bi bi-clock-history me-2 text-primary"></i>Anrufliste</h4>
+
+{% if calls %}
+<div class="table-responsive">
+  <table class="table table-hover table-dark">
+    <thead>
+      <tr>
+        <th>Zeitpunkt</th>
+        <th>Anrufer</th>
+        <th>Name</th>
+        <th>Dauer</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for c in calls %}
+    <tr>
+      <td><small>{{ c.created_at[:16].replace('T',' ') }}</small></td>
+      <td>{{ c.caller_number or '–' }}</td>
+      <td>{{ c.caller_name or '–' }}</td>
+      <td>{{ c.duration or 0 }}s</td>
+      <td>
+        {% if c.status == 'answered' %}
+        <span class="badge bg-success">Beantwortet</span>
+        {% elif c.status == 'error' %}
+        <span class="badge bg-danger">Fehler</span>
+        {% else %}
+        <span class="badge bg-secondary">{{ c.status }}</span>
+        {% endif %}
+      </td>
+      <td>
+        <a href="{{ url_for('call_detail', call_id=c.id) }}" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-eye"></i>
+        </a>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="text-center py-5 text-secondary">
+  <i class="bi bi-telephone-x display-1"></i>
+  <p class="mt-3">Noch keine Anrufe.</p>
+</div>
+{% endif %}
+{% endblock %}
